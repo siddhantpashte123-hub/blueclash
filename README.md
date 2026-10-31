@@ -30,6 +30,19 @@ After installation:
 
 Allow inbound TCP port **8989** in your VPS provider's firewall/security group. The installer also adds a UFW rule if UFW is active. On a fresh install, sample tournaments are clearly labelled and cannot accept entries. Sign in to the admin panel and, under **Payment settings**, either upload your UPI payment QR or enter your UPI ID and payee name to generate one. Then create and publish a real tournament (or edit a sample and explicitly convert it to a real one). Paid tournaments cannot accept registrations until a payment method is configured. Free tournaments work without one.
 
+**If the install health check fails:**
+
+The installer checks `http://127.0.0.1:8989/api/health` locally; a successful response is `{"ok":true}`. A 404 or connection failure does not by itself identify the cause. Check the service, its logs, the port owner, and a direct request that bypasses proxies:
+
+```bash
+sudo systemctl status blueclash --no-pager -l
+sudo journalctl -u blueclash -n 80 --no-pager
+sudo ss -ltnp | grep ':8989'
+curl -q --noproxy '*' -i --max-time 5 http://127.0.0.1:8989/api/health
+```
+
+If another program is using port 8989, identify it before changing anything; do not stop an unrelated service blindly. Once the conflict or other reported error is resolved, re-run the one-command manager and choose **1**. A failed install keeps `/var/lib/blueclash`, including an administrator already created there; it will not ask to create that account again. Keep passwords and session tokens out of shared logs and screenshots.
+
 For an uploaded QR, use a **reusable open-amount UPI QR**, not one fixed to a different amount. The app cannot inspect or validate its payee or amount: scan it yourself to check it leads to the correct account. Players must enter the exact fee shown at checkout if their app does not pre-fill it. A UPI-ID-generated QR includes the entry amount automatically.
 
 > **Important:** The IP-and-port URL is plain HTTP. Before accepting real registrations or payments, put the app behind HTTPS using a domain and a trusted reverse proxy such as Caddy or Nginx with a TLS certificate. Keep direct port 8989 private once the proxy is in place. Set `TRUST_PROXY=true` and `COOKIE_SECURE=true` for the systemd service when it is served exclusively over HTTPS (see below). Never send passwords or payment screenshots over public plain HTTP.
