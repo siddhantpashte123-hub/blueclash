@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -7,11 +7,11 @@ import {
   Check,
   CircleDollarSign,
   ClipboardList,
-  CreditCard,
   ExternalLink,
   Eye,
   LayoutDashboard,
   Plus,
+  QrCode,
   Save,
   Settings,
   ShieldCheck,
@@ -30,6 +30,8 @@ import {
   StatusBadge,
   useAuth,
 } from "../shared.jsx";
+import SettingsPanel from "../components/SettingsPanel.jsx";
+import VerifyTicket from "../components/VerifyTicket.jsx";
 
 const defaultRules =
   "Play fair and respect every participant.\nUse the in-game details provided during registration.\nBe ready before the scheduled start time.\nThe organizer’s decision is final.";
@@ -527,109 +529,12 @@ function ReviewModal({ entry, onClose, onReviewed }) {
   );
 }
 
-function SettingsPanel({ initial, onSaved }) {
-  const [form, setForm] = useState({
-    upiId: initial.upiId || "",
-    upiName: initial.upiName || "",
-    supportEmail: initial.supportEmail || "",
-  });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const update = (key) => (event) =>
-    setForm({ ...form, [key]: event.target.value });
-  const submit = async (event) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api("/admin/settings", { method: "PUT", body: form });
-      onSaved("Payment settings saved.");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <>
-      <div className="admin-section-header">
-        <div>
-          <span className="section-kicker">
-            <span>// CONFIGURATION</span>
-          </span>
-          <h2>PAYMENT SETTINGS.</h2>
-          <p>Configure the UPI account players pay for tournament entries.</p>
-        </div>
-      </div>
-      <div className="notice notice-warning">
-        <AlertCircle size={19} />
-        <div>
-          <strong>Payments are manually verified.</strong>
-          <p>
-            Make sure this UPI ID belongs to you. Check actual incoming payments
-            in your UPI or banking app before approving an entry.
-          </p>
-        </div>
-      </div>
-      <form className="form-panel form-stack settings-form" onSubmit={submit}>
-        <div className="panel-heading">
-          <div>
-            <span className="section-kicker">
-              <span>// YOUR PAYMENT DETAILS</span>
-            </span>
-            <h2>
-              UPI <span>CHECKOUT.</span>
-            </h2>
-          </div>
-          <CreditCard size={22} />
-        </div>
-        <label>
-          UPI ID
-          <input
-            value={form.upiId}
-            onChange={update("upiId")}
-            placeholder="yourname@bank"
-            maxLength={150}
-          />
-          <small>Leave both UPI fields empty to disable paid entries.</small>
-        </label>
-        <label>
-          PAYEE NAME
-          <input
-            value={form.upiName}
-            onChange={update("upiName")}
-            placeholder="The name shown to players"
-            maxLength={80}
-          />
-        </label>
-        <label>
-          SUPPORT EMAIL <span className="optional">OPTIONAL</span>
-          <input
-            type="email"
-            value={form.supportEmail}
-            onChange={update("supportEmail")}
-            placeholder="support@example.com"
-            maxLength={254}
-          />
-          <small>Shown to players who need help with an entry.</small>
-        </label>
-        <div className="inline-note">
-          <ShieldCheck size={17} /> A unique UPI QR is generated locally for
-          each entry amount. BlueClash does not process or automatically verify
-          payments.
-        </div>
-        <ErrorMessage message={error} />
-        <button className="button button-primary" disabled={busy}>
-          <Save size={16} /> {busy ? "SAVING..." : "SAVE SETTINGS"}
-        </button>
-      </form>
-    </>
-  );
-}
-
 export default function Admin() {
   const { user, loading: authLoading, refresh } = useAuth();
-  const [tab, setTab] = useState("overview");
+  const location = useLocation();
+  const scannedTicket =
+    new URLSearchParams(location.search).get("ticket") || "";
+  const [tab, setTab] = useState(scannedTicket ? "verify" : "overview");
   const [stats, setStats] = useState(null);
   const [events, setEvents] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -659,6 +564,9 @@ export default function Admin() {
   useEffect(() => {
     if (user?.isAdmin) load();
   }, [user?.id, user?.isAdmin, load]);
+  useEffect(() => {
+    if (scannedTicket && user?.isAdmin) setTab("verify");
+  }, [scannedTicket, user?.isAdmin]);
   const done = async (text) => {
     setEditing(null);
     setReviewing(null);
@@ -698,7 +606,7 @@ export default function Admin() {
         to="/auth"
         replace
         state={{
-          from: "/admin",
+          from: `/admin${location.search}`,
           message: "Sign in with your administrator account.",
         }}
       />
@@ -724,6 +632,7 @@ export default function Admin() {
       label: "Player entries",
       icon: <ClipboardList size={17} />,
     },
+    { id: "verify", label: "Verify ticket", icon: <QrCode size={17} /> },
     { id: "settings", label: "Payment settings", icon: <Settings size={17} /> },
   ];
   const filteredEntries = entries.filter(
@@ -858,7 +767,7 @@ export default function Admin() {
                         <p>
                           {paymentSettings?.paymentConfigured
                             ? "Create your next tournament or review player entries."
-                            : "Add your UPI ID and payee name before opening paid tournaments."}
+                            : "Upload a UPI payment QR or add your UPI ID before opening paid tournaments."}
                         </p>
                       </div>
                       <button
@@ -1009,6 +918,9 @@ export default function Admin() {
                       empty="No entries in this category yet."
                     />
                   </>
+                )}
+                {tab === "verify" && (
+                  <VerifyTicket initialCode={scannedTicket} />
                 )}
                 {tab === "settings" && paymentSettings && (
                   <SettingsPanel initial={paymentSettings} onSaved={done} />

@@ -148,9 +148,13 @@ export default function Checkout() {
             <span>// THE FINAL STEP</span>
           </div>
           <h1>
-            {finished ? (
+            {entry.status === "approved" ? (
               <>
-                YOU'RE IN THE <span>ARENA.</span>
+                YOUR TICKET IS <span>READY.</span>
+              </>
+            ) : entry.status === "pending" ? (
+              <>
+                ENTRY UNDER <span>REVIEW.</span>
               </>
             ) : (
               <>
@@ -193,8 +197,8 @@ export default function Checkout() {
                 </h2>
                 <p>
                   {entry.status === "approved"
-                    ? "Your place is confirmed. Get ready to bring your best game."
-                    : "Your screenshot is with the organizer. Your entry is pending until they review and verify your payment."}
+                    ? "Your place is confirmed and your ticket is ready. Get ready to bring your best game."
+                    : "Your screenshot is with the organizer. Your ticket will appear in My Entries after they verify your payment."}
                 </p>
                 <StatusBadge status={entry.status} />
                 {entry.reviewNote && (
@@ -203,12 +207,28 @@ export default function Checkout() {
                   </div>
                 )}
                 <div className="result-actions">
-                  <Link to="/my-entries" className="button button-primary">
-                    VIEW MY ENTRIES <ArrowUpRight size={16} />
-                  </Link>
-                  <Link to="/#tournaments" className="text-link">
-                    EXPLORE MORE EVENTS <ArrowUpRight size={15} />
-                  </Link>
+                  {entry.status === "approved" ? (
+                    <>
+                      <Link
+                        to={`/entries/${id}/ticket`}
+                        className="button button-primary"
+                      >
+                        VIEW MY TICKET <ArrowUpRight size={16} />
+                      </Link>
+                      <Link to="/my-entries" className="text-link">
+                        MY ENTRIES <ArrowUpRight size={15} />
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <Link to="/my-entries" className="button button-primary">
+                        VIEW MY ENTRIES <ArrowUpRight size={16} />
+                      </Link>
+                      <Link to="/#tournaments" className="text-link">
+                        EXPLORE MORE EVENTS <ArrowUpRight size={15} />
+                      </Link>
+                    </>
+                  )}
                 </div>
               </div>
             ) : (
@@ -240,8 +260,9 @@ export default function Checkout() {
                       <LockKeyhole size={22} />
                     </div>
                     <p className="muted-copy">
-                      Scan the QR code with any UPI app and pay the exact entry
-                      fee.
+                      Scan the payment QR with any UPI app and pay the exact
+                      entry fee. After paying, upload a screenshot of the
+                      successful payment.
                     </p>
                     {expired && (
                       <div className="notice notice-warning">
@@ -284,30 +305,50 @@ export default function Checkout() {
                           <strong className="payment-amount">
                             {money(entry.amount)}
                           </strong>
-                          <div className="upi-field">
-                            <span>UPI ID</span>
-                            <div>
-                              <strong>{payment.upiId}</strong>
-                              <button
-                                type="button"
-                                onClick={copyUpi}
-                                aria-label="Copy UPI ID"
-                              >
-                                {copied ? (
-                                  <Check size={17} />
-                                ) : (
-                                  <Copy size={17} />
-                                )}
-                              </button>
+                          {payment.mode === "upi" && (
+                            <div className="upi-field">
+                              <span>UPI ID</span>
+                              <div>
+                                <strong>{payment.upiId}</strong>
+                                <button
+                                  type="button"
+                                  onClick={copyUpi}
+                                  aria-label="Copy UPI ID"
+                                >
+                                  {copied ? (
+                                    <Check size={17} />
+                                  ) : (
+                                    <Copy size={17} />
+                                  )}
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                          <div className="upi-field">
-                            <span>PAYEE NAME</span>
-                            <strong>{payment.upiName}</strong>
-                          </div>
-                          <a className="upi-open" href={payment.upiUri}>
-                            OPEN IN UPI APP <ExternalLink size={14} />
-                          </a>
+                          )}
+                          {payment.upiName && (
+                            <div className="upi-field">
+                              <span>PAYEE NAME</span>
+                              <strong>{payment.upiName}</strong>
+                            </div>
+                          )}
+                          {payment.mode === "qr" && (
+                            <div className="upi-field">
+                              <span>UPLOADED PAYMENT QR</span>
+                              <strong>
+                                Enter {money(entry.amount)} in your UPI app if
+                                the amount is not pre-filled.
+                              </strong>
+                              <small>
+                                On one phone? Use your UPI app's
+                                scan-from-gallery option with a screenshot of
+                                the QR, if supported.
+                              </small>
+                            </div>
+                          )}
+                          {payment.upiUri && (
+                            <a className="upi-open" href={payment.upiUri}>
+                              OPEN IN UPI APP <ExternalLink size={14} />
+                            </a>
+                          )}
                         </div>
                       </div>
                     ) : (
@@ -361,8 +402,9 @@ export default function Checkout() {
                       <ImagePlus size={23} />
                     </div>
                     <p className="muted-copy">
-                      Upload a screenshot of your successful UPI payment. The
-                      organizer will review it before confirming your spot.
+                      Upload the screenshot showing your successful payment —
+                      not a photo of the QR code. The organizer will review it
+                      before confirming your spot and issuing your ticket.
                     </p>
                     <form onSubmit={submit} className="form-stack">
                       <div

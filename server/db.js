@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
+import { newTicketCode } from "./security.js";
 
 export const DEFAULT_TERMS =
   "By entering, you agree to follow the tournament rules, provide accurate player details, and accept the organizer’s decisions. Entry fees are subject to the organizer’s refund policy. Any cheating, harassment, or unfair play can result in disqualification.";
@@ -69,6 +70,8 @@ export function openDatabase(
       proof_mime TEXT,
       payment_reference TEXT NOT NULL DEFAULT '',
       review_note TEXT NOT NULL DEFAULT '',
+      ticket_code TEXT,
+      ticket_issued_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(tournament_id, user_id)
@@ -80,6 +83,43 @@ export function openDatabase(
       value TEXT NOT NULL
     );
   `);
+
+  // Upgrade existing VPS databases in place and issue tickets for entries that
+  // were already confirmed before tickets existed. The lock makes this safe
+  // even if the web service and admin CLI start at the same time.
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const columns = db.prepare("PRAGMA table_info(entries)").all();
+    if (!columns.some((column) => column.name === "ticket_code")) {
+      db.exec("ALTER TABLE entries ADD COLUMN ticket_code TEXT");
+    }
+    if (!columns.some((column) => column.name === "ticket_issued_at")) {
+      db.exec("ALTER TABLE entries ADD COLUMN ticket_issued_at TEXT");
+    }
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS entries_ticket_code ON entries(ticket_code) WHERE ticket_code IS NOT NULL",
+    );
+    const withoutTicket = db
+      .prepare(
+        "SELECT id, created_at, updated_at FROM entries WHERE status = 'approved' AND ticket_code IS NULL",
+      )
+      .all();
+    const issueTicket = db.prepare(
+      "UPDATE entries SET ticket_code = ?, ticket_issued_at = ? WHERE id = ? AND ticket_code IS NULL",
+    );
+    for (const entry of withoutTicket) {
+      issueTicket.run(
+        newTicketCode(),
+        entry.updated_at || entry.created_at,
+        entry.id,
+      );
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    db.close();
+    throw error;
+  }
 
   // Seed only once, even if an administrator later deletes every sample.
   if (

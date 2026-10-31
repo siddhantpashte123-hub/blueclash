@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 REPO_URL="https://github.com/siddhantpashte123-hub/blueclash.git"
-REPO_REF="${BLUECLASH_REF:-arena/27134d7a-blueclash}"
+REPO_REF="${BLUECLASH_REF:-main}"
 NODE_VERSION="v22.22.3"
 APP_DIR="/opt/blueclash"
 NODE_DIR="/opt/blueclash-node"
@@ -173,7 +173,7 @@ SERVICE
   fi
   say "Installation complete!"
   printf '  Website:      http://YOUR_VPS_IP:8989\n  Admin panel:  http://YOUR_VPS_IP:8989/admin\n  Manage again: sudo blueclash\n\n'
-  echo "In the admin panel, add your UPI ID under Payment settings and publish a real tournament."
+  echo "In the admin panel, upload your payment QR or add your UPI ID under Payment settings, then publish a real tournament."
   echo "Allow TCP port 8989 in your VPS/cloud firewall. Set up HTTPS before collecting real payments."
 }
 
