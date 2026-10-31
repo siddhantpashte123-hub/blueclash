@@ -7,7 +7,7 @@ A self-hosted tournament platform for Minecraft, Free Fire, and other games. Pla
 On a **Debian or Ubuntu VPS running systemd** (x86-64 or ARM64), run this single command:
 
 ```bash
-curl -fsSL 'https://github.com/siddhantpashte123-hub/blueclash/raw/refs/heads/arena/27134d7a-blueclash/install.sh' -o /tmp/blueclash-install.sh && bash /tmp/blueclash-install.sh
+curl -fsSL 'https://github.com/siddhantpashte123-hub/blueclash/raw/refs/heads/main/install.sh' -o /tmp/blueclash-install.sh && bash /tmp/blueclash-install.sh
 ```
 
 The manager shows:
@@ -28,7 +28,9 @@ After installation:
 - Open the manager again: `sudo blueclash`
 - Service logs: `sudo journalctl -u blueclash -n 100 --no-pager`
 
-Allow inbound TCP port **8989** in your VPS provider's firewall/security group. The installer also adds a UFW rule if UFW is active. On a fresh install, sample tournaments are clearly labelled and cannot accept entries. Sign in to the admin panel, set your **UPI ID and payee name** under **Payment settings**, then create and publish a real tournament (or edit a sample and explicitly convert it to a real one). Paid tournaments cannot accept registrations until UPI is configured. A free tournament can be published without UPI.
+Allow inbound TCP port **8989** in your VPS provider's firewall/security group. The installer also adds a UFW rule if UFW is active. On a fresh install, sample tournaments are clearly labelled and cannot accept entries. Sign in to the admin panel and, under **Payment settings**, either upload your UPI payment QR or enter your UPI ID and payee name to generate one. Then create and publish a real tournament (or edit a sample and explicitly convert it to a real one). Paid tournaments cannot accept registrations until a payment method is configured. Free tournaments work without one.
+
+For an uploaded QR, use a **reusable open-amount UPI QR**, not one fixed to a different amount. The app cannot inspect or validate its payee or amount: scan it yourself to check it leads to the correct account. Players must enter the exact fee shown at checkout if their app does not pre-fill it. A UPI-ID-generated QR includes the entry amount automatically.
 
 > **Important:** The IP-and-port URL is plain HTTP. Before accepting real registrations or payments, put the app behind HTTPS using a domain and a trusted reverse proxy such as Caddy or Nginx with a TLS certificate. Keep direct port 8989 private once the proxy is in place. Set `TRUST_PROXY=true` and `COOKIE_SECURE=true` for the systemd service when it is served exclusively over HTTPS (see below). Never send passwords or payment screenshots over public plain HTTP.
 
@@ -57,9 +59,10 @@ Apply the change with `sudo systemctl restart blueclash`. `TRUST_PROXY` must onl
 1. Visitors browse tournaments and their rules without signing in.
 2. A player accepts the tournament's terms and selects **Enter Tournament**. If needed, they sign in or create an account and are returned to the tournament details.
 3. The player provides first name, last name, in-game ID, optional UID, and in-game name.
-4. For paid events, the app reserves a spot for 30 minutes and generates a UPI QR containing the configured payee and the entry's locked-in price. The player pays in their own UPI app, selects **I have paid**, and uploads a screenshot (PNG/JPEG/WebP, up to 5 MB). An optional UPI transaction reference can be supplied.
-5. The entry becomes **Pending review**. In **Admin → Player entries**, the organizer checks the actual payment in their bank/UPI app and approves or rejects it. A rejected proof can be resubmitted without paying again. If the hold expired, players can reserve again before paying; someone who already paid can still submit proof for manual review, but a spot is not guaranteed.
-6. Free entries are confirmed immediately and skip payment.
+4. For paid events, the app reserves a spot for 30 minutes and shows the configured payment QR and locked-in price. The player pays the exact amount in their UPI app, selects **I have paid**, and uploads a screenshot of the **successful payment** (PNG/JPEG/WebP, up to 5 MB), not a screenshot of the QR. An optional UPI transaction reference can be supplied.
+5. The entry becomes **Pending review**. In **Admin → Player entries**, the organizer checks the actual incoming payment in their bank/UPI app and approves or rejects it. A rejected proof can be resubmitted without paying again. If the hold expired, players can reserve again before paying; someone who already paid can still submit proof for manual review, but a spot is not guaranteed.
+6. Once approved, a ticket is created automatically under **My Entries → View Ticket**. Free entries skip payment and receive a ticket immediately. The player can download a PNG or print/save a PDF. Existing approved entries get tickets when the application is updated.
+7. The ticket's QR is **not a payment QR**. It opens an admin-only page where an organizer can sign in and look up the confirmed ticket. Alternatively, use **Admin → Verify ticket** and paste its code or QR link. Verification does not record check-ins or prevent a ticket from being used more than once; organizers must check the player's identity and manage attendance separately.
 
 **BlueClash does not process or automatically verify payments, send refunds, or guarantee a payment. A screenshot alone is not proof of funds.** Verify the transaction independently before approving. The organizer is responsible for their event rules, refund policy, player communications, applicable local laws, taxes, and privacy obligations.
 
@@ -70,7 +73,7 @@ Apply the change with `sudo systemctl restart blueclash`. `TRUST_PROXY` must onl
 - SQLite database and private screenshots: `/var/lib/blueclash`
 - Service: `blueclash.service`
 
-Choose **1** in `sudo blueclash` to update from the configured GitHub branch while retaining the database and uploads. Choose **2** to uninstall; data is kept unless you explicitly type `DELETE` when prompted. There is no automatic backup. To make a consistent backup, stop the service, archive the entire data directory (including any SQLite WAL files and uploads), and restart it:
+Choose **1** in `sudo blueclash` to update from GitHub `main` while retaining the database and uploads. If your manager was installed from an older release, first re-run the one-command installer above and choose **1** once; older managers were pinned to an old branch and will not fetch this release by themselves. Thereafter `sudo blueclash` uses the current manager and updates from `main` by default. Choose **2** to uninstall; data is kept unless you explicitly type `DELETE` when prompted. There is no automatic backup. To make a consistent backup, stop the service, archive the entire data directory (including any SQLite WAL files and uploads), and restart it:
 
 ```bash
 sudo systemctl stop blueclash
@@ -101,6 +104,6 @@ The default installation does not include public user password recovery or email
 
 ## Tech
 
-React, Vite, Express, and SQLite. Passwords are salted and hashed with scrypt, sessions use HTTP-only same-site cookies, admin APIs enforce the admin role, and payment screenshots are stored outside the public web root. UPI QR codes are generated locally; no payment processor is integrated.
+React, Vite, Express, and SQLite. Passwords are salted and hashed with scrypt, sessions use HTTP-only same-site cookies, admin APIs enforce the admin role, and payment screenshots are stored outside the public web root. Payment QR codes are uploaded by the organizer or generated locally from a UPI ID; no payment processor is integrated. Ticket verification QR codes are generated locally and require an admin login.
 
 BlueClash is an independent community platform and is not affiliated with Minecraft, Free Fire, or their publishers.

@@ -94,14 +94,27 @@ export default function MyEntries() {
                   </div>
                 </div>
                 <div className="my-entry-action">
-                  <StatusBadge status={entry.status} />
+                  <div className="my-entry-status">
+                    <StatusBadge status={entry.status} />
+                    {entry.status === "pending" && (
+                      <small className="my-entry-note">
+                        Ticket available after approval.
+                      </small>
+                    )}
+                  </div>
                   <Link
                     className="button button-outline"
-                    to={`/entries/${entry.id}`}
+                    to={
+                      entry.status === "approved"
+                        ? `/entries/${entry.id}/ticket`
+                        : `/entries/${entry.id}`
+                    }
                   >
-                    {entry.status === "awaiting_payment"
-                      ? "CONTINUE CHECKOUT"
-                      : "VIEW ENTRY"}{" "}
+                    {entry.status === "approved"
+                      ? "VIEW TICKET"
+                      : entry.status === "awaiting_payment"
+                        ? "CONTINUE CHECKOUT"
+                        : "VIEW ENTRY"}{" "}
                     <ArrowUpRight size={15} />
                   </Link>
                 </div>

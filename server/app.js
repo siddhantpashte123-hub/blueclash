@@ -14,6 +14,7 @@ import {
   normalizeEmail,
   validEmail,
   newSessionToken,
+  newTicketCode,
   sha256,
 } from "./security.js";
 
@@ -95,14 +96,31 @@ function sessionCookie(
   return `blueclash_session=${token}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${maxAge}${secure ? "; Secure" : ""}${allowEmbed ? "; Partitioned" : ""}`;
 }
 
-function settings(db) {
+function storedImagePath(uploadDir, filename) {
+  return /^[a-f0-9]{48}\.(png|jpg|webp)$/.test(filename || "")
+    ? path.join(uploadDir, filename)
+    : null;
+}
+
+function settings(db, uploadDir) {
   const upiId = getSetting(db, "upi_id");
   const upiName = getSetting(db, "upi_name");
+  const qrFilename = getSetting(db, "payment_qr_filename");
+  const qrPath = storedImagePath(uploadDir, qrFilename);
+  const qrUploaded = Boolean(qrPath && fs.existsSync(qrPath));
+  // Existing installations had no payment_mode; keep their UPI setup working.
+  const paymentMode =
+    getSetting(db, "payment_mode") || (upiId && upiName ? "upi" : "none");
   return {
     upiId,
     upiName,
     supportEmail: getSetting(db, "support_email"),
-    paymentConfigured: Boolean(upiId && upiName),
+    paymentMode,
+    qrUploaded,
+    paymentConfigured:
+      paymentMode === "qr"
+        ? qrUploaded
+        : paymentMode === "upi" && Boolean(upiId && upiName),
   };
 }
 
@@ -184,6 +202,8 @@ function entryDto(row) {
     paymentReference: row.payment_reference,
     reviewNote: row.review_note,
     hasProof: Boolean(row.proof_filename),
+    ticketCode: row.status === "approved" ? row.ticket_code : null,
+    ticketIssuedAt: row.status === "approved" ? row.ticket_issued_at : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -322,6 +342,29 @@ export function createApp(options = {}) {
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 2 },
   });
+  const settingsUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 6 },
+  });
+  const parseSettings = (req, res, next) =>
+    req.is("multipart/form-data")
+      ? settingsUpload.single("paymentQr")(req, res, next)
+      : next();
+
+  function sendStoredImage(res, filename) {
+    const file = storedImagePath(uploadDir, filename);
+    if (!file || !fs.existsSync(file))
+      throw new ApiError(404, "QR image not found.");
+    const ext = path.extname(file).toLowerCase();
+    const mime = {
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".webp": "image/webp",
+    }[ext];
+    res.set("Content-Type", mime);
+    res.set("Content-Disposition", "inline");
+    res.sendFile(file);
+  }
 
   function startSession(req, res, userId) {
     if (req.sessionToken)
@@ -346,7 +389,7 @@ export function createApp(options = {}) {
   app.get("/api/me", (req, res) =>
     res.json({
       user: publicUser(req.user),
-      supportEmail: settings(db).supportEmail,
+      supportEmail: settings(db, uploadDir).supportEmail,
     }),
   );
 
@@ -415,7 +458,7 @@ export function createApp(options = {}) {
   });
 
   app.get("/api/tournaments", (_req, res) => {
-    const pay = settings(db).paymentConfigured;
+    const pay = settings(db, uploadDir).paymentConfigured;
     const rows = db
       .prepare(
         `${TOURNAMENT_SELECT} WHERE t.status IN ('published', 'completed') ORDER BY t.is_demo ASC, t.starts_at ASC`,
@@ -436,7 +479,7 @@ export function createApp(options = {}) {
           .get(row.id, req.user.id)
       : null;
     res.json({
-      tournament: tournamentDto(row, settings(db).paymentConfigured),
+      tournament: tournamentDto(row, settings(db, uploadDir).paymentConfigured),
       myEntry: mine || null,
     });
   });
@@ -463,7 +506,7 @@ export function createApp(options = {}) {
         ["pending", "approved", "rejected"].includes(current.status)
       )
         return { id: current.id, status: current.status, existing: true };
-      const dto = tournamentDto(row, settings(db).paymentConfigured);
+      const dto = tournamentDto(row, settings(db, uploadDir).paymentConfigured);
       if (req.body?.termsVersion !== dto.termsVersion)
         throw new ApiError(
           409,
@@ -477,7 +520,7 @@ export function createApp(options = {}) {
         throw new ApiError(409, dto.closedReason || "Registration is closed.");
       if (
         (current?.amount_paise ?? row.entry_fee_paise) > 0 &&
-        !settings(db).paymentConfigured
+        !settings(db, uploadDir).paymentConfigured
       )
         throw new ApiError(
           409,
@@ -517,7 +560,8 @@ export function createApp(options = {}) {
         .prepare(
           `INSERT INTO entries
         (tournament_id, user_id, first_name, last_name, game_id, uid, game_name, amount_paise, terms_snapshot,
-         terms_accepted_at, status, hold_expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         terms_accepted_at, status, hold_expires_at, ticket_code, ticket_issued_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           row.id,
@@ -532,6 +576,8 @@ export function createApp(options = {}) {
           now,
           status,
           expires,
+          status === "approved" ? newTicketCode() : null,
+          status === "approved" ? now : null,
           now,
           now,
         );
@@ -552,7 +598,7 @@ export function createApp(options = {}) {
       .prepare(`${ENTRY_SELECT} WHERE e.id = ? AND e.user_id = ?`)
       .get(req.params.id, req.user.id);
     if (!row) throw new ApiError(404, "Entry not found.");
-    const payment = settings(db);
+    const payment = settings(db, uploadDir);
     let qrCode = null;
     let upiUri = null;
     if (
@@ -560,31 +606,65 @@ export function createApp(options = {}) {
       payment.paymentConfigured &&
       ["awaiting_payment", "rejected"].includes(row.status)
     ) {
-      const params = new URLSearchParams({
-        pa: payment.upiId,
-        pn: payment.upiName,
-        am: (row.amount_paise / 100).toFixed(2),
-        cu: "INR",
-        tn: `BlueClash entry ${row.id}`,
-      });
-      upiUri = `upi://pay?${params}`;
-      qrCode = await QRCode.toDataURL(upiUri, {
-        margin: 2,
-        width: 280,
-        color: { dark: "#101629", light: "#ffffff" },
-      });
+      if (payment.paymentMode === "qr") {
+        // Served through an authenticated route; no uploaded files are public.
+        qrCode = `/api/entries/${row.id}/payment-qr`;
+      } else {
+        const params = new URLSearchParams({
+          pa: payment.upiId,
+          pn: payment.upiName,
+          am: (row.amount_paise / 100).toFixed(2),
+          cu: "INR",
+          tn: `BlueClash entry ${row.id}`,
+        });
+        upiUri = `upi://pay?${params}`;
+        qrCode = await QRCode.toDataURL(upiUri, {
+          margin: 2,
+          width: 280,
+          color: { dark: "#101629", light: "#ffffff" },
+        });
+      }
     }
     res.json({
       entry: entryDto(row),
       payment: {
         configured: payment.paymentConfigured,
-        upiId: payment.upiId,
+        mode: payment.paymentMode,
+        upiId: payment.paymentMode === "upi" ? payment.upiId : "",
         upiName: payment.upiName,
         qrCode,
         upiUri,
         supportEmail: payment.supportEmail,
       },
     });
+  });
+
+  app.get("/api/entries/:id/payment-qr", requireUser, (req, res) => {
+    const row = db
+      .prepare(
+        "SELECT id, amount_paise FROM entries WHERE id = ? AND user_id = ?",
+      )
+      .get(req.params.id, req.user.id);
+    if (!row || row.amount_paise <= 0)
+      throw new ApiError(404, "Entry not found.");
+    const payment = settings(db, uploadDir);
+    if (payment.paymentMode !== "qr" || !payment.qrUploaded)
+      throw new ApiError(404, "QR image not found.");
+    sendStoredImage(res, getSetting(db, "payment_qr_filename"));
+  });
+
+  app.get("/api/entries/:id/ticket", requireUser, (req, res) => {
+    const row = db
+      .prepare(`${ENTRY_SELECT} WHERE e.id = ? AND e.user_id = ?`)
+      .get(req.params.id, req.user.id);
+    if (!row) throw new ApiError(404, "Entry not found.");
+    if (row.status !== "approved" || !row.ticket_code) {
+      throw new ApiError(
+        409,
+        "Your ticket will be available after the organizer confirms your entry.",
+      );
+    }
+    res.json({ ticket: entryDto(row) });
   });
 
   app.post("/api/entries/:id/hold", requireUser, (req, res) => {
@@ -604,7 +684,8 @@ export function createApp(options = {}) {
         throw new ApiError(409, "Registration is closed.");
       if (row.hold_expires_at > new Date().toISOString()) return entryDto(row);
       if (
-        tournamentDto(tournament, settings(db).paymentConfigured).slotsLeft <= 0
+        tournamentDto(tournament, settings(db, uploadDir).paymentConfigured)
+          .slotsLeft <= 0
       )
         throw new ApiError(
           409,
@@ -696,7 +777,7 @@ export function createApp(options = {}) {
       .all(new Date().toISOString());
     res.json({
       tournaments: rows.map((row) =>
-        tournamentDto(row, settings(db).paymentConfigured),
+        tournamentDto(row, settings(db, uploadDir).paymentConfigured),
       ),
     });
   });
@@ -731,7 +812,7 @@ export function createApp(options = {}) {
     res.status(201).json({
       tournament: tournamentDto(
         tournamentById(db, Number(result.lastInsertRowid)),
-        settings(db).paymentConfigured,
+        settings(db, uploadDir).paymentConfigured,
       ),
     });
   });
@@ -772,7 +853,10 @@ export function createApp(options = {}) {
       return tournamentById(db, previous.id);
     });
     res.json({
-      tournament: tournamentDto(result, settings(db).paymentConfigured),
+      tournament: tournamentDto(
+        result,
+        settings(db, uploadDir).paymentConfigured,
+      ),
     });
   });
 
@@ -854,40 +938,124 @@ export function createApp(options = {}) {
             "All spots are already approved. Review this payment manually.",
           );
       }
+      const now = new Date().toISOString();
       db.prepare(
-        "UPDATE entries SET status = ?, review_note = ?, updated_at = ? WHERE id = ?",
+        "UPDATE entries SET status = ?, review_note = ?, updated_at = ?, ticket_code = ?, ticket_issued_at = ? WHERE id = ?",
       ).run(
         action === "approve" ? "approved" : "rejected",
         note,
-        new Date().toISOString(),
+        now,
+        action === "approve" ? row.ticket_code || newTicketCode() : null,
+        action === "approve" ? row.ticket_issued_at || now : null,
         row.id,
       );
     });
     res.json({ ok: true });
   });
 
+  app.get("/api/admin/tickets/:code", requireAdmin, (req, res) => {
+    const code = String(req.params.code || "").toUpperCase();
+    if (!/^BC-[A-F0-9]{24}$/.test(code))
+      throw new ApiError(400, "Enter a valid BlueClash ticket code.");
+    const row = db
+      .prepare(
+        `${ENTRY_SELECT} WHERE e.ticket_code = ? AND e.status = 'approved'`,
+      )
+      .get(code);
+    if (!row)
+      throw new ApiError(
+        404,
+        "Confirmed ticket not found. Check the code and try again.",
+      );
+    res.json({ ticket: { ...entryDto(row), email: row.user_email } });
+  });
+
   app.get("/api/admin/settings", requireAdmin, (_req, res) =>
-    res.json({ settings: settings(db) }),
+    res.json({ settings: settings(db, uploadDir) }),
   );
-  app.put("/api/admin/settings", requireAdmin, (req, res) => {
+  app.get("/api/admin/payment-qr", requireAdmin, (_req, res) => {
+    sendStoredImage(res, getSetting(db, "payment_qr_filename"));
+  });
+  app.put("/api/admin/settings", requireAdmin, parseSettings, (req, res) => {
     const upiId = text(req.body?.upiId ?? "", "UPI ID", 0, 150).toLowerCase();
     const upiName = text(req.body?.upiName ?? "", "Payee name", 0, 80);
     const supportEmail = normalizeEmail(req.body?.supportEmail);
+    const paymentMode =
+      req.body?.paymentMode ?? (upiId && upiName ? "upi" : "none");
+    const removeQr =
+      req.body?.removeQr === true || req.body?.removeQr === "true";
+    const oldFilename = getSetting(db, "payment_qr_filename");
+    const existingQr = settings(db, uploadDir).qrUploaded;
+    if (!["upi", "qr", "none"].includes(paymentMode))
+      throw new ApiError(400, "Choose a valid payment method.");
     if (upiId && !/^[a-z0-9._-]{2,100}@[a-z0-9.-]{2,50}$/i.test(upiId))
       throw new ApiError(400, "Enter a valid UPI ID, for example name@bank.");
-    if (Boolean(upiId) !== Boolean(upiName))
+    if (paymentMode === "upi" && (!upiId || !upiName))
+      throw new ApiError(
+        400,
+        "Enter both a UPI ID and payee name to generate a QR.",
+      );
+    if (
+      req.body?.paymentMode === undefined &&
+      Boolean(upiId) !== Boolean(upiName)
+    )
       throw new ApiError(
         400,
         "Enter both a UPI ID and payee name, or clear both.",
       );
     if (supportEmail && !validEmail(supportEmail))
       throw new ApiError(400, "Enter a valid support email.");
-    transaction(db, () => {
-      setSetting(db, "upi_id", upiId);
-      setSetting(db, "upi_name", upiName);
-      setSetting(db, "support_email", supportEmail);
-    });
-    res.json({ settings: settings(db) });
+    if (req.file && paymentMode !== "qr")
+      throw new ApiError(
+        400,
+        "Select uploaded QR as your payment method before uploading an image.",
+      );
+    if (removeQr && req.file)
+      throw new ApiError(
+        400,
+        "Choose to remove or replace the saved QR, not both.",
+      );
+    if (paymentMode === "qr" && !req.file && (!existingQr || removeQr)) {
+      throw new ApiError(
+        400,
+        "Upload a UPI QR image before enabling uploaded QR payments.",
+      );
+    }
+
+    let newFilename = "";
+    if (req.file) {
+      const type = validateImage(req.file.buffer);
+      if (!type)
+        throw new ApiError(400, "Upload a PNG, JPEG, or WebP QR image.");
+      newFilename = `${crypto.randomBytes(24).toString("hex")}.${type.ext}`;
+      fs.writeFileSync(path.join(uploadDir, newFilename), req.file.buffer, {
+        mode: 0o600,
+        flag: "wx",
+      });
+    }
+    try {
+      transaction(db, () => {
+        setSetting(db, "upi_id", upiId);
+        setSetting(db, "upi_name", upiName);
+        setSetting(db, "support_email", supportEmail);
+        setSetting(db, "payment_mode", paymentMode);
+        if (newFilename || removeQr)
+          setSetting(db, "payment_qr_filename", newFilename);
+      });
+    } catch (error) {
+      if (newFilename)
+        fs.rmSync(path.join(uploadDir, newFilename), { force: true });
+      throw error;
+    }
+    if (
+      (newFilename || removeQr) &&
+      oldFilename &&
+      oldFilename !== newFilename
+    ) {
+      const oldPath = storedImagePath(uploadDir, oldFilename);
+      if (oldPath) fs.rmSync(oldPath, { force: true });
+    }
+    res.json({ settings: settings(db, uploadDir) });
   });
 
   app.use("/api", (_req, _res, next) =>
@@ -902,14 +1070,17 @@ export function createApp(options = {}) {
       res.sendFile(path.join(distDir, "index.html"));
     });
   }
-  app.use((error, _req, res, _next) => {
-    if (error instanceof multer.MulterError)
+  app.use((error, req, res, _next) => {
+    if (error instanceof multer.MulterError) {
+      const kind =
+        req.path === "/api/admin/settings" ? "QR image" : "Screenshot";
       return res.status(400).json({
         error:
           error.code === "LIMIT_FILE_SIZE"
-            ? "Screenshot must be 5 MB or smaller."
-            : "Invalid screenshot upload.",
+            ? `${kind} must be 5 MB or smaller.`
+            : `Invalid ${kind.toLowerCase()} upload.`,
       });
+    }
     if (error.type === "entity.too.large")
       return res.status(413).json({ error: "Request is too large." });
     if (error instanceof SyntaxError && error.status === 400)

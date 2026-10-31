@@ -68,7 +68,7 @@ export function useAuth() {
 export const money = (value) =>
   value === 0
     ? "FREE"
-    : `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+    : `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: Number(value) % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 export const formatDate = (value, withTime = false) => {
   if (!value || Number.isNaN(new Date(value).getTime())) return "TBA";
   return new Intl.DateTimeFormat("en-IN", {

@@ -36,3 +36,8 @@ export function sha256(value) {
 export function newSessionToken() {
   return crypto.randomBytes(32).toString("hex");
 }
+
+// Ticket codes are not sequential, and are only exposed to their owner or an admin.
+export function newTicketCode() {
+  return `BC-${crypto.randomBytes(12).toString("hex").toUpperCase()}`;
+}

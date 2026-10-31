@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createApp } from "../server/app.js";
+import { openDatabase, setSetting } from "../server/db.js";
 import { hashPassword } from "../server/security.js";
 
 const png = Buffer.from(
@@ -204,6 +205,17 @@ test("public browsing, account, registration, manual payment review, and admin c
       assert.equal(response.status, 201);
       entryId = response.data.entry.id;
       assert.equal(response.data.entry.status, "awaiting_payment");
+      assert.equal(
+        (await req(`/entries/${entryId}`, { cookie: playerCookie })).data.entry
+          .ticketCode,
+        null,
+      );
+      assert.equal(
+        (await req(`/entries/${entryId}/ticket`, { cookie: playerCookie }))
+          .status,
+        409,
+      );
+      assert.equal((await req(`/entries/${entryId}/ticket`)).status, 401);
       response = await req(`/tournaments/${tournament.id}/entries`, {
         method: "POST",
         cookie: playerCookie,
@@ -258,6 +270,16 @@ test("public browsing, account, registration, manual payment review, and admin c
       assert.equal(response.status, 200);
       assert.equal(response.data.entry.status, "pending");
       assert.equal(
+        (await req(`/entries/${entryId}`, { cookie: playerCookie })).data.entry
+          .ticketCode,
+        null,
+      );
+      assert.equal(
+        (await req(`/entries/${entryId}/ticket`, { cookie: playerCookie }))
+          .status,
+        409,
+      );
+      assert.equal(
         (await req(`/admin/entries/${entryId}/proof`, { cookie: playerCookie }))
           .status,
         403,
@@ -297,6 +319,50 @@ test("public browsing, account, registration, manual payment review, and admin c
       response = await req(`/entries/${entryId}`, { cookie: playerCookie });
       assert.equal(response.data.entry.status, "approved");
       assert.equal(response.data.entry.reviewNote, "Verified in UPI.");
+      const code = response.data.entry.ticketCode;
+      assert.match(code, /^BC-[A-F0-9]{24}$/);
+      assert.ok(response.data.entry.ticketIssuedAt);
+      const ticket = await req(`/entries/${entryId}/ticket`, {
+        cookie: playerCookie,
+      });
+      assert.equal(ticket.status, 200);
+      assert.equal(ticket.data.ticket.ticketCode, code);
+      assert.equal(ticket.data.ticket.firstName, "First");
+      assert.equal(
+        (await req(`/entries/${entryId}/ticket`, { cookie: otherCookie }))
+          .status,
+        404,
+      );
+      assert.equal((await req(`/entries/${entryId}/ticket`)).status, 401);
+      assert.equal(
+        (await req(`/admin/tickets/${code}`, { cookie: playerCookie })).status,
+        403,
+      );
+      assert.equal((await req(`/admin/tickets/${code}`)).status, 401);
+      assert.equal(
+        (await req(`/admin/tickets/not-a-ticket`, { cookie: adminCookie }))
+          .status,
+        400,
+      );
+      assert.equal(
+        (
+          await req(`/admin/tickets/BC-000000000000000000000000`, {
+            cookie: adminCookie,
+          })
+        ).status,
+        404,
+      );
+      const verified = await req(`/admin/tickets/${code.toLowerCase()}`, {
+        cookie: adminCookie,
+      });
+      assert.equal(verified.status, 200);
+      assert.equal(verified.data.ticket.ticketCode, code);
+      assert.equal(verified.data.ticket.email, "player@example.com");
+      assert.equal(
+        (await req("/me/entries", { cookie: playerCookie })).data.entries[0]
+          .ticketCode,
+        code,
+      );
       assert.equal(
         (
           await req(`/admin/entries/${entryId}/review`, {
@@ -306,6 +372,11 @@ test("public browsing, account, registration, manual payment review, and admin c
           })
         ).status,
         409,
+      );
+      assert.equal(
+        (await req(`/entries/${entryId}/ticket`, { cookie: playerCookie })).data
+          .ticket.ticketCode,
+        code,
       );
       assert.equal(
         (
@@ -378,6 +449,21 @@ test("public browsing, account, registration, manual payment review, and admin c
       });
       assert.equal(response.status, 201);
       assert.equal(response.data.entry.status, "approved");
+      const freeTicket = await req(
+        `/entries/${response.data.entry.id}/ticket`,
+        { cookie: otherCookie },
+      );
+      assert.equal(freeTicket.status, 200);
+      assert.match(freeTicket.data.ticket.ticketCode, /^BC-[A-F0-9]{24}$/);
+      assert.ok(freeTicket.data.ticket.ticketIssuedAt);
+      assert.equal(
+        (
+          await req(`/admin/tickets/${freeTicket.data.ticket.ticketCode}`, {
+            cookie: adminCookie,
+          })
+        ).status,
+        200,
+      );
     },
   );
   await t.test(
@@ -526,6 +612,15 @@ test("public browsing, account, registration, manual payment review, and admin c
         cookie: playerCookie,
       });
       assert.equal(checkout.data.entry.status, "rejected");
+      assert.equal(checkout.data.entry.ticketCode, null);
+      assert.equal(
+        (
+          await req(`/entries/${first.data.entry.id}/ticket`, {
+            cookie: playerCookie,
+          })
+        ).status,
+        409,
+      );
       assert.match(checkout.data.entry.reviewNote, /contact/);
       assert.equal(
         (
@@ -537,6 +632,165 @@ test("public browsing, account, registration, manual payment review, and admin c
         ).status,
         200,
       );
+    },
+  );
+  await t.test(
+    "uploaded payment QR is validated, private, replaceable, and removable",
+    async () => {
+      const makeSettings = (file, options = {}) => {
+        const form = new FormData();
+        form.append("paymentMode", options.mode || "qr");
+        form.append("upiId", options.upiId || "");
+        form.append("upiName", options.upiName || "QR Host");
+        form.append("supportEmail", "help@example.com");
+        form.append("removeQr", String(Boolean(options.remove)));
+        if (file)
+          form.append(
+            "paymentQr",
+            new Blob([file], { type: "image/png" }),
+            "qr.png",
+          );
+        return form;
+      };
+      const save = (form, cookie = adminCookie) =>
+        req("/admin/settings", { method: "PUT", cookie, body: form });
+      assert.equal((await save(makeSettings())).status, 400);
+      assert.equal(
+        (await save(makeSettings(Buffer.from("not an image")))).status,
+        400,
+      );
+      const tooLarge = await save(
+        makeSettings(Buffer.alloc(5 * 1024 * 1024 + 1)),
+      );
+      assert.equal(tooLarge.status, 400);
+      assert.match(tooLarge.data.error, /QR image must be 5 MB/);
+      assert.equal((await save(makeSettings(png), playerCookie)).status, 403);
+      let response = await save(makeSettings(png));
+      assert.equal(response.status, 200);
+      assert.equal(response.data.settings.paymentMode, "qr");
+      assert.equal(response.data.settings.qrUploaded, true);
+      assert.equal(response.data.settings.paymentConfigured, true);
+      assert.equal((await req("/admin/payment-qr")).status, 401);
+      assert.equal(
+        (await req("/admin/payment-qr", { cookie: playerCookie })).status,
+        403,
+      );
+      response = await req("/admin/payment-qr", { cookie: adminCookie });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), "image/png");
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.deepEqual(response.data, png);
+      const oldFilename = app.locals.db
+        .prepare("SELECT value FROM settings WHERE key = 'payment_qr_filename'")
+        .get().value;
+      assert.equal(
+        (await req(`/uploads/${oldFilename}`, { cookie: playerCookie })).status,
+        404,
+      );
+      const created = await req("/admin/tournaments", {
+        method: "POST",
+        cookie: adminCookie,
+        body: { ...eventPayload, title: "Uploaded QR Clash" },
+      });
+      assert.equal(created.data.tournament.canJoin, true);
+      const entered = await req(
+        `/tournaments/${created.data.tournament.id}/entries`,
+        {
+          method: "POST",
+          cookie: playerCookie,
+          body: {
+            firstName: "QR",
+            lastName: "Player",
+            gameId: "qr-player",
+            uid: "",
+            gameName: "Scanner",
+            acceptTerms: true,
+            termsVersion: created.data.tournament.termsVersion,
+          },
+        },
+      );
+      assert.equal(entered.status, 201);
+      const id = entered.data.entry.id;
+      const checkout = await req(`/entries/${id}`, { cookie: playerCookie });
+      assert.equal(checkout.data.payment.mode, "qr");
+      assert.equal(checkout.data.entry.amount, 49.5);
+      assert.equal(
+        checkout.data.payment.qrCode,
+        `/api/entries/${id}/payment-qr`,
+      );
+      assert.equal(checkout.data.payment.upiUri, null);
+      assert.equal((await req(`/entries/${id}/payment-qr`)).status, 401);
+      assert.equal(
+        (await req(`/entries/${id}/payment-qr`, { cookie: otherCookie }))
+          .status,
+        404,
+      );
+      response = await req(`/entries/${id}/payment-qr`, {
+        cookie: playerCookie,
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(response.data, png);
+      assert.equal(
+        (await save(makeSettings(Buffer.from("bad replacement")))).status,
+        400,
+      );
+      assert.deepEqual(
+        (await req("/admin/payment-qr", { cookie: adminCookie })).data,
+        png,
+      );
+      const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+      response = await save(makeSettings(jpeg));
+      assert.equal(response.status, 200);
+      response = await req(`/entries/${id}/payment-qr`, {
+        cookie: playerCookie,
+      });
+      assert.deepEqual(response.data, jpeg);
+      assert.equal(response.headers.get("content-type"), "image/jpeg");
+      assert.equal(
+        fs.existsSync(path.join(dir, "uploads", oldFilename)),
+        false,
+      );
+      const newFilename = app.locals.db
+        .prepare("SELECT value FROM settings WHERE key = 'payment_qr_filename'")
+        .get().value;
+      assert.notEqual(newFilename, oldFilename);
+      assert.equal(
+        (await save(makeSettings(null, { remove: true }))).status,
+        400,
+      );
+      response = await save(makeSettings(null, { mode: "none", remove: true }));
+      assert.equal(response.status, 200);
+      assert.equal(response.data.settings.qrUploaded, false);
+      assert.equal(response.data.settings.paymentConfigured, false);
+      assert.equal(
+        fs.existsSync(path.join(dir, "uploads", newFilename)),
+        false,
+      );
+      assert.equal(
+        (await req(`/entries/${id}/payment-qr`, { cookie: playerCookie }))
+          .status,
+        404,
+      );
+      assert.equal(
+        (await req(`/tournaments/${created.data.tournament.id}`)).data
+          .tournament.canJoin,
+        false,
+      );
+      // A settings request in the previous JSON format still enables dynamic UPI.
+      response = await req("/admin/settings", {
+        method: "PUT",
+        cookie: adminCookie,
+        body: {
+          upiId: "legacy@bank",
+          upiName: "Legacy Host",
+          supportEmail: "",
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.data.settings.paymentMode, "upi");
+      const dynamic = await req(`/entries/${id}`, { cookie: playerCookie });
+      assert.match(dynamic.data.payment.upiUri, /am=49.50/);
+      assert.match(dynamic.data.payment.upiUri, /pa=legacy%40bank/);
     },
   );
 });
@@ -579,4 +833,142 @@ test("trusted preview can opt into embedding without weakening production defaul
   assert.match(register.headers.get("set-cookie"), /SameSite=None/);
   assert.match(register.headers.get("set-cookie"), /Secure/);
   assert.match(register.headers.get("set-cookie"), /Partitioned/);
+});
+
+test("upgrading an old database preserves UPI and issues stable tickets for existing approved entries", async (t) => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "blueclash-migration-test-"),
+  );
+  const legacy = openDatabase(dir);
+  // Recreate the entry schema from before ticket columns existed.
+  legacy.exec(
+    "DROP INDEX entries_ticket_code; ALTER TABLE entries DROP COLUMN ticket_code; ALTER TABLE entries DROP COLUMN ticket_issued_at;",
+  );
+  const stamp = "2025-01-02T03:04:05.000Z";
+  const hash = await hashPassword("legacy-password-123");
+  const insertUser = legacy.prepare(
+    "INSERT INTO users (name,email,password_hash,is_admin,created_at) VALUES (?,?,?,?,?)",
+  );
+  const adminId = Number(
+    insertUser.run("Legacy Admin", "legacy-admin@example.com", hash, 1, stamp)
+      .lastInsertRowid,
+  );
+  const approvedId = Number(
+    insertUser.run("Approved Player", "approved@example.com", hash, 0, stamp)
+      .lastInsertRowid,
+  );
+  const pendingId = Number(
+    insertUser.run("Pending Player", "pending@example.com", hash, 0, stamp)
+      .lastInsertRowid,
+  );
+  const awaitingId = Number(
+    insertUser.run("Awaiting Player", "awaiting@example.com", hash, 0, stamp)
+      .lastInsertRowid,
+  );
+  assert.ok(adminId);
+  const tournamentId = legacy
+    .prepare("SELECT id FROM tournaments ORDER BY id LIMIT 1")
+    .get().id;
+  const insertEntry = legacy.prepare(`INSERT INTO entries
+    (tournament_id,user_id,first_name,last_name,game_id,game_name,amount_paise,terms_snapshot,terms_accepted_at,status,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const entry = (userId, status) =>
+    Number(
+      insertEntry.run(
+        tournamentId,
+        userId,
+        "Old",
+        "Player",
+        `game-${userId}`,
+        "OldGame",
+        4900,
+        "Accepted terms",
+        stamp,
+        status,
+        stamp,
+        stamp,
+      ).lastInsertRowid,
+    );
+  const approvedEntry = entry(approvedId, "approved");
+  const pendingEntry = entry(pendingId, "pending");
+  const awaitingEntry = entry(awaitingId, "awaiting_payment");
+  setSetting(legacy, "upi_id", "old@bank");
+  setSetting(legacy, "upi_name", "Original Host");
+  legacy.close();
+
+  const app = createApp({ dataDir: dir });
+  const server = await new Promise((resolve) => {
+    const instance = app.listen(0, "127.0.0.1", () => resolve(instance));
+  });
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    app.locals.db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const db = app.locals.db;
+  const approved = db
+    .prepare("SELECT ticket_code, ticket_issued_at FROM entries WHERE id = ?")
+    .get(approvedEntry);
+  assert.match(approved.ticket_code, /^BC-[A-F0-9]{24}$/);
+  assert.equal(approved.ticket_issued_at, stamp);
+  assert.equal(
+    db.prepare("SELECT ticket_code FROM entries WHERE id = ?").get(pendingEntry)
+      .ticket_code,
+    null,
+  );
+  assert.equal(
+    db
+      .prepare("SELECT ticket_code FROM entries WHERE id = ?")
+      .get(awaitingEntry).ticket_code,
+    null,
+  );
+  const reopened = openDatabase(dir);
+  assert.equal(
+    reopened
+      .prepare("SELECT ticket_code FROM entries WHERE id = ?")
+      .get(approvedEntry).ticket_code,
+    approved.ticket_code,
+  );
+  reopened.close();
+
+  const base = `http://127.0.0.1:${server.address().port}/api`;
+  const login = async (email) => {
+    const response = await fetch(`${base}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "BlueClash",
+      },
+      body: JSON.stringify({ email, password: "legacy-password-123" }),
+    });
+    assert.equal(response.status, 200);
+    return response.headers.get("set-cookie").split(";")[0];
+  };
+  const adminCookie = await login("legacy-admin@example.com");
+  const settingResponse = await fetch(`${base}/admin/settings`, {
+    headers: { Cookie: adminCookie },
+  });
+  const config = (await settingResponse.json()).settings;
+  assert.equal(config.paymentMode, "upi");
+  assert.equal(config.paymentConfigured, true);
+  assert.equal(config.upiId, "old@bank");
+  const ownerCookie = await login("approved@example.com");
+  const ticketResponse = await fetch(
+    `${base}/entries/${approvedEntry}/ticket`,
+    { headers: { Cookie: ownerCookie } },
+  );
+  assert.equal(ticketResponse.status, 200);
+  assert.equal(
+    (await ticketResponse.json()).ticket.ticketCode,
+    approved.ticket_code,
+  );
+  const pendingCookie = await login("pending@example.com");
+  assert.equal(
+    (
+      await fetch(`${base}/entries/${pendingEntry}/ticket`, {
+        headers: { Cookie: pendingCookie },
+      })
+    ).status,
+    409,
+  );
 });

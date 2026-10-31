@@ -2192,6 +2192,11 @@ img {
   color: #e3ecfb;
   overflow-wrap: anywhere;
 }
+.upi-field > small {
+  color: #95a8c5;
+  font-size: 10px;
+  line-height: 1.6;
+}
 .upi-field div {
   display: flex;
   align-items: center;
@@ -2385,6 +2390,17 @@ img {
   flex-direction: column;
   gap: 12px;
   margin-right: 8px;
+}
+.my-entry-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.my-entry-note {
+  color: #a1b0c8;
+  font-size: 10px;
+  line-height: 1.5;
 }
 /* admin */
 .admin-layout {
@@ -3405,6 +3421,12 @@ img {
     justify-content: space-between;
     margin: 0;
   }
+  .my-entry-status {
+    align-items: flex-start;
+  }
+  .my-entry-note {
+    max-width: 150px;
+  }
   .admin-sidebar {
     margin-left: -18px;
     margin-right: -18px;
@@ -3490,5 +3512,609 @@ img {
   }
   .result-panel {
     padding: 45px 20px;
+  }
+}
+
+/* Confirmed tournament ticket */
+.ticket-container {
+  max-width: 1050px;
+}
+.ticket-page-heading {
+  margin: 8px 0 30px;
+}
+.ticket-page-heading h1 {
+  font: 800 58px/0.95 var(--head);
+  margin: 12px 0;
+}
+.ticket-page-heading h1 span {
+  color: #82a4ff;
+}
+.ticket-page-heading p {
+  color: #a1b0c8;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+}
+.ticket-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  background: #111d2f;
+  border: 1px solid #344765;
+  box-shadow: 0 20px 65px #0004;
+  overflow: hidden;
+}
+.ticket-main {
+  padding: 34px 38px 24px;
+  min-width: 0;
+  background:
+    radial-gradient(ellipse at 80% 0%, #25447a 0%, transparent 42%), #111d2f;
+}
+.ticket-topline,
+.ticket-main-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.ticket-brand {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: 800 25px/1 var(--head);
+}
+.ticket-brand > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-right: 6px;
+  background: #3268ff;
+  font: 800 22px/1 var(--head);
+  color: #fff;
+}
+.ticket-brand > span:last-child {
+  color: #86a9ff;
+}
+.ticket-confirmed {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #a4e9c2;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+}
+.ticket-heading {
+  margin-top: 46px;
+}
+.ticket-heading h2 {
+  font: 800 clamp(38px, 5vw, 58px) / 0.95 var(--head);
+  text-transform: uppercase;
+  margin: 11px 0;
+  overflow-wrap: anywhere;
+}
+.ticket-heading p {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #aec5f7;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ticket-heading p svg {
+  color: #87aaff;
+}
+.ticket-heading p span {
+  color: #52698e;
+}
+.ticket-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 32px;
+  border-top: 1px solid #35455f;
+  border-bottom: 1px solid #35455f;
+  padding: 23px 0;
+  margin-top: 27px;
+}
+.ticket-fields > div,
+.ticket-code-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.ticket-fields span,
+.ticket-code-row > div > span {
+  color: #8b9fbf;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.ticket-fields strong {
+  color: #eff4ff;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.ticket-code-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 22px 0;
+}
+.ticket-code-row strong {
+  font: 700 22px/1 var(--head);
+  letter-spacing: 1px;
+  color: #cedfff;
+  overflow-wrap: anywhere;
+}
+.ticket-fee {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #97add2;
+  white-space: nowrap;
+}
+.ticket-main-footer {
+  padding-top: 18px;
+  border-top: 1px solid #35455f;
+  font-size: 8px;
+  letter-spacing: 1px;
+  font-weight: 800;
+  color: #8aa1c5;
+}
+.ticket-main-footer span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #9cc2b9;
+}
+.ticket-stub {
+  position: relative;
+  padding: 33px 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: #182b4a;
+  border-left: 1px dashed #6480ad;
+}
+.ticket-stub:before,
+.ticket-stub:after {
+  content: "";
+  position: absolute;
+  left: -11px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #090e18;
+  border: 1px solid #344765;
+}
+.ticket-stub:before {
+  top: -11px;
+}
+.ticket-stub:after {
+  bottom: -11px;
+}
+.ticket-stub-label {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #9db9f8;
+}
+.ticket-qr {
+  width: 190px;
+  height: 190px;
+  padding: 7px;
+  margin: 43px 0 22px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+}
+.ticket-qr img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.ticket-qr .loading-state {
+  padding: 0;
+  color: #30415f;
+}
+.ticket-stub h3 {
+  font: 800 30px/1 var(--head);
+  margin: 0;
+}
+.ticket-stub p {
+  color: #a7bad8;
+  font-size: 10px;
+  line-height: 1.7;
+  margin: 11px 0 20px;
+  max-width: 190px;
+}
+.ticket-stub > strong {
+  font: 700 16px/1 var(--head);
+  letter-spacing: 1px;
+  color: #d5e4ff;
+  overflow-wrap: anywhere;
+}
+.ticket-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 25px;
+}
+.ticket-page-actions .text-link {
+  margin-left: 10px;
+}
+.ticket-helper {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 25px;
+  color: #93a4be;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.ticket-helper svg {
+  flex: none;
+  color: #83a6ff;
+}
+@media (max-width: 620px) {
+  .ticket-page-heading h1 {
+    font-size: 45px;
+  }
+  .ticket-card {
+    grid-template-columns: 1fr;
+  }
+  .ticket-main {
+    padding: 25px 22px;
+  }
+  .ticket-heading {
+    margin-top: 33px;
+  }
+  .ticket-fields {
+    gap: 20px 16px;
+  }
+  .ticket-code-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .ticket-code-row strong {
+    font-size: clamp(16px, 4.5vw, 22px);
+  }
+  .ticket-fields strong {
+    font-size: 11px;
+  }
+  .ticket-confirmed {
+    font-size: 8px;
+  }
+  .ticket-stub {
+    border-left: 0;
+    border-top: 1px dashed #6480ad;
+    padding: 24px;
+  }
+  .ticket-stub:before,
+  .ticket-stub:after {
+    top: -11px;
+    bottom: auto;
+  }
+  .ticket-stub:before {
+    left: -11px;
+  }
+  .ticket-stub:after {
+    right: -11px;
+    left: auto;
+  }
+  .ticket-qr {
+    margin: 20px 0;
+  }
+  .ticket-page-actions .button {
+    width: 100%;
+  }
+  .ticket-page-actions .text-link {
+    margin: 8px 0 0;
+  }
+}
+@media print {
+  @page {
+    margin: 12mm;
+  }
+  body {
+    background: #fff !important;
+  }
+  .topline,
+  .site-header,
+  .site-footer,
+  .ticket-page .back-link,
+  .ticket-page-heading,
+  .ticket-page-actions,
+  .ticket-helper,
+  .ticket-page .form-error {
+    display: none !important;
+  }
+  .ticket-page {
+    padding: 0 !important;
+    background: #fff !important;
+    min-height: 0;
+  }
+  .ticket-container {
+    width: 100% !important;
+    max-width: none;
+  }
+  .ticket-card {
+    grid-template-columns: minmax(0, 1fr) 250px;
+    break-inside: avoid;
+    box-shadow: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* Organizer payment QR setup */
+.payment-method-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.payment-method-fieldset legend {
+  color: #bac8dc;
+  font-size: 9px;
+  letter-spacing: 1px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+.payment-methods {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.payment-method {
+  position: relative;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 11px !important;
+  padding: 14px;
+  border: 1px solid #34445c;
+  background: #0c1524;
+  cursor: pointer;
+  min-width: 0;
+}
+.payment-method.selected {
+  border-color: #7298ff;
+  background: #192e52;
+}
+.payment-method input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.payment-method:has(input:focus-visible) {
+  outline: 2px solid #a4bdff;
+  outline-offset: 2px;
+}
+.payment-method > svg {
+  flex: none;
+  color: #87aaff;
+}
+.payment-method > span {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.payment-method strong {
+  color: #e7efff;
+  font-size: 9px;
+  letter-spacing: 0.7px;
+}
+.payment-method small {
+  color: #95a8c5;
+  line-height: 1.5;
+}
+.payment-disabled {
+  grid-column: 1/-1;
+}
+.payment-qr-settings {
+  padding: 18px;
+  background: #0d1727;
+  border: 1px solid #30415c;
+}
+.payment-qr-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #91aff3;
+}
+.payment-qr-heading strong {
+  color: #e1ebff;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+}
+.payment-qr-heading p {
+  margin: 7px 0 0;
+  color: #94a6c1;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.admin-qr-upload {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 18px 0 0;
+}
+.admin-qr-preview {
+  width: 135px;
+  height: 135px;
+  flex: none;
+  background: #f8faff;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+}
+.admin-qr-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.admin-qr-preview > span {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #536783;
+  font-size: 8px;
+  letter-spacing: 0.6px;
+  font-weight: 800;
+}
+.admin-qr-upload > div:last-child {
+  min-width: 0;
+}
+.upload-qr-label {
+  position: relative;
+  display: inline-flex !important;
+  padding: 11px 14px;
+  color: #c9d9ff !important;
+  background: #1e345b;
+  border: 1px solid #49649a;
+  cursor: pointer;
+  font-size: 9px;
+}
+.upload-qr-label:focus-within {
+  outline: 2px solid #a4bdff;
+  outline-offset: 2px;
+}
+.upload-qr-label input {
+  position: absolute;
+  opacity: 0;
+  width: 1px !important;
+  height: 1px;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+.admin-qr-upload small {
+  display: block;
+  margin-top: 9px;
+  color: #90a3bf;
+  font-size: 10px;
+}
+.qr-filename {
+  color: #b8caf0;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.remove-qr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 13px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: #f0b6c3;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.payment-qr-settings .notice {
+  margin-bottom: 0;
+}
+@media (max-width: 620px) {
+  .payment-methods {
+    grid-template-columns: 1fr;
+  }
+  .payment-disabled {
+    grid-column: auto;
+  }
+  .admin-qr-upload {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .admin-qr-preview {
+    width: 105px;
+    height: 105px;
+  }
+}
+
+/* Admin ticket verification */
+.verify-form {
+  max-width: 650px;
+}
+.verify-form > .button {
+  align-self: flex-start;
+}
+.verified-ticket-result {
+  max-width: 650px;
+  margin-top: 18px;
+  padding: 24px;
+  border: 1px solid #396b53;
+  background: #12251f;
+}
+.verified-ticket-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.verified-ticket-heading > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #a6eac2;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+.verified-ticket-result h3 {
+  margin: 20px 0;
+  font: 800 30px/1 var(--head);
+  text-transform: uppercase;
+}
+.verified-ticket-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 22px;
+}
+.verified-ticket-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.verified-ticket-grid span {
+  color: #9bb9ad;
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  font-weight: 800;
+}
+.verified-ticket-grid strong {
+  color: #e2f5e9;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 620px) {
+  .verified-ticket-result {
+    padding: 18px;
+  }
+}
+@media (max-width: 380px) {
+  .entry-steps > div {
+    gap: 4px;
+  }
+  .entry-steps > div > span {
+    width: 24px;
+    height: 24px;
+  }
+  .entry-steps i {
+    margin: 0 2px;
+  }
+  .entry-steps strong {
+    letter-spacing: 0.3px;
   }
 }
