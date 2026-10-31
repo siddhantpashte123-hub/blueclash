@@ -32,6 +32,7 @@ import {
 } from "../shared.jsx";
 import SettingsPanel from "../components/SettingsPanel.jsx";
 import VerifyTicket from "../components/VerifyTicket.jsx";
+import DeleteTournamentModal from "../components/DeleteTournamentModal.jsx";
 
 const defaultRules =
   "Play fair and respect every participant.\nUse the in-game details provided during registration.\nBe ready before the scheduled start time.\nThe organizer’s decision is final.";
@@ -541,7 +542,9 @@ export default function Admin() {
   const [paymentSettings, setPaymentSettings] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [warning, setWarning] = useState("");
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const [reviewing, setReviewing] = useState(null);
   const [filter, setFilter] = useState("pending");
   const load = useCallback(async () => {
@@ -567,32 +570,36 @@ export default function Admin() {
   useEffect(() => {
     if (scannedTicket && user?.isAdmin) setTab("verify");
   }, [scannedTicket, user?.isAdmin]);
-  const done = async (text) => {
+  const done = async (text, warningText = "") => {
     setEditing(null);
     setReviewing(null);
     setMessage(text);
+    setWarning(warningText);
     await load();
     refresh();
   };
-  const removeEvent = async (event) => {
-    if (
-      !window.confirm(
-        `Delete “${event.title}”? Tournaments with entries cannot be deleted.`,
-      )
-    )
-      return;
-    try {
-      await api(`/admin/tournaments/${event.id}`, { method: "DELETE" });
-      done("Tournament deleted.");
-    } catch (err) {
-      setError(err.message);
-    }
+  const removeEvent = (event) => {
+    setError("");
+    setMessage("");
+    setWarning("");
+    setDeleting(event);
+  };
+  const deletedEvent = (result) => {
+    setDeleting(null);
+    const warningText = result.cleanupFailures
+      ? `${result.cleanupFailures} payment screenshot(s) could not be removed. Cleanup will retry when the service restarts; check the server logs.`
+      : "";
+    done(
+      `Tournament deleted. ${result.deletedEntries} associated ${result.deletedEntries === 1 ? "entry was" : "entries were"} removed.`,
+      warningText,
+    );
   };
   const changeTab = (value) => {
     setTab(value);
     setEditing(null);
     setError("");
     setMessage("");
+    setWarning("");
   };
   if (authLoading)
     return (
@@ -683,6 +690,19 @@ export default function Admin() {
               </Link>
             </div>
             <ErrorMessage message={error} />
+            {warning && (
+              <div className="notice notice-warning">
+                <AlertCircle size={18} />
+                <span>{warning}</span>
+                <button
+                  className="notice-close"
+                  onClick={() => setWarning("")}
+                  aria-label="Dismiss warning"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
             {message && (
               <div className="notice notice-success">
                 <Check size={18} />
@@ -930,6 +950,13 @@ export default function Admin() {
           </div>
         </div>
       </div>
+      {deleting && (
+        <DeleteTournamentModal
+          tournament={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={deletedEvent}
+        />
+      )}
       {reviewing && (
         <ReviewModal
           entry={reviewing}

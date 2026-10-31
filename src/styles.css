@@ -4118,3 +4118,61 @@ img {
     letter-spacing: 0.3px;
   }
 }
+
+/* Explicit confirmation for permanent tournament deletion */
+.delete-tournament-modal {
+  width: min(590px, 100%);
+}
+.delete-tournament-name {
+  margin: 0;
+  color: #eef4ff;
+  font: 800 26px/1.1 var(--head);
+  overflow-wrap: anywhere;
+}
+.delete-tournament-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.delete-tournament-stats > div {
+  min-width: 0;
+  background: #0d1726;
+  border: 1px solid #2e3c53;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.delete-tournament-stats strong {
+  font: 800 25px/1 var(--head);
+  color: #e8efff;
+}
+.delete-tournament-stats span {
+  color: #9fb0cb;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  overflow-wrap: anywhere;
+}
+.delete-tournament-stats small {
+  color: #8e9fba;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.delete-warning {
+  margin: 0;
+}
+.delete-tournament-help {
+  margin: 0;
+  color: #a2b2cb;
+  font-size: 11px;
+  line-height: 1.7;
+}
+@media (max-width: 420px) {
+  .delete-tournament-stats > div {
+    padding: 9px;
+  }
+  .delete-tournament-modal .review-actions .button {
+    width: 100%;
+  }
+}

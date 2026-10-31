@@ -585,6 +585,10 @@ test("public browsing, account, registration, manual payment review, and admin c
         ).status,
         200,
       );
+      const originalProof = app.locals.db
+        .prepare("SELECT proof_filename FROM entries WHERE id = ?")
+        .get(first.data.entry.id).proof_filename;
+      assert.ok(fs.existsSync(path.join(dir, "uploads", originalProof)));
       assert.equal(
         (
           await req(`/admin/entries/${first.data.entry.id}/review`, {
@@ -631,6 +635,26 @@ test("public browsing, account, registration, manual payment review, and admin c
           })
         ).status,
         200,
+      );
+      const replacementProof = app.locals.db
+        .prepare("SELECT proof_filename FROM entries WHERE id = ?")
+        .get(first.data.entry.id).proof_filename;
+      assert.notEqual(replacementProof, originalProof);
+      assert.equal(
+        fs.existsSync(path.join(dir, "uploads", originalProof)),
+        false,
+      );
+      assert.equal(
+        fs.existsSync(path.join(dir, "uploads", replacementProof)),
+        true,
+      );
+      assert.equal(
+        app.locals.db
+          .prepare(
+            "SELECT filename FROM proof_deletion_queue WHERE filename = ?",
+          )
+          .get(originalProof),
+        undefined,
       );
     },
   );

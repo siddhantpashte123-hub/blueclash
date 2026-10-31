@@ -66,6 +66,12 @@ Apply the change with `sudo systemctl restart blueclash`. `TRUST_PROXY` must onl
 
 **BlueClash does not process or automatically verify payments, send refunds, or guarantee a payment. A screenshot alone is not proof of funds.** Verify the transaction independently before approving. The organizer is responsible for their event rules, refund policy, player communications, applicable local laws, taxes, and privacy obligations.
 
+### Delete a test tournament
+
+In **Admin → Tournaments**, select the trash icon, review the entry, ticket and screenshot counts, and type `DELETE` to confirm. This permanently removes the tournament and its associated entries, tickets and payment screenshots; player accounts, other tournaments and the organizer's payment QR are retained. No refunds are issued automatically. To preserve the records instead, cancel and set the tournament visibility to **Completed**. Deleting data from the app does not remove it from existing backups.
+
+If a screenshot cannot be removed, the admin will see a warning. The app keeps a cleanup queue and retries when the service restarts; check `journalctl -u blueclash` for errors.
+
 ## Data, updates, and recovery
 
 - Application files: `/opt/blueclash`
