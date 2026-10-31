@@ -8,6 +8,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDatabase, transaction, getSetting, setSetting } from "./db.js";
+import { normalizeSiteUrl } from "../src/seo.js";
+import { assertSeoTemplate, createSeo, structuredDataCspHash } from "./seo.js";
 import {
   hashPassword,
   verifyPassword,
@@ -381,10 +383,13 @@ function validateImage(buffer) {
 }
 
 export function createApp(options = {}) {
+  // A configured, validated origin is used for SEO URLs, never a request header.
+  const siteUrl = normalizeSiteUrl(options.siteUrl ?? process.env.SITE_URL);
   const dataDir = path.resolve(
     options.dataDir || process.env.DATA_DIR || path.join(ROOT, "data"),
   );
   const db = openDatabase(dataDir);
+  const seo = createSeo(db, siteUrl);
   const uploadDir = path.join(dataDir, "uploads");
   cleanupQueuedProofs(db, uploadDir);
   const app = express();
@@ -399,6 +404,9 @@ export function createApp(options = {}) {
       contentSecurityPolicy: {
         directives: {
           "upgrade-insecure-requests": null,
+          // Permit only the exact, generated homepage JSON-LD; keep executable
+          // inline scripts blocked rather than weakening the site's CSP.
+          "script-src": ["'self'", structuredDataCspHash(seo.structuredData)],
           ...(allowEmbed ? { "frame-ancestors": null } : {}),
         },
       },
@@ -409,6 +417,7 @@ export function createApp(options = {}) {
   app.use(express.json({ limit: "64kb" }));
   app.use("/api", (req, res, next) => {
     res.set("Cache-Control", "no-store");
+    res.set("X-Robots-Tag", "noindex, nofollow");
     // A cross-site HTML form cannot send this header; cross-origin fetch is not allowed by CORS.
     if (
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
@@ -1441,13 +1450,53 @@ export function createApp(options = {}) {
   app.use("/api", (_req, _res, next) =>
     next(new ApiError(404, "API route not found.")),
   );
-  const distDir = path.join(ROOT, "dist");
-  if (fs.existsSync(distDir)) {
+  app.get("/robots.txt", (_req, res) => {
+    res.set("Cache-Control", "no-store").type("text/plain").send(seo.robots());
+  });
+  app.get("/sitemap.xml", (_req, res) => {
+    res.set("Cache-Control", "no-store").type("application/xml").send(seo.sitemap());
+  });
+
+  const distDir = path.resolve(options.distDir || path.join(ROOT, "dist"));
+  const indexFile = path.join(distDir, "index.html");
+  if (fs.existsSync(indexFile)) {
+    const template = fs.readFileSync(indexFile, "utf8");
+    assertSeoTemplate(template);
+    // Avoid serving a second, unrendered copy of the homepage metadata.
+    app.get("/index.html", (_req, res) => res.redirect(301, "/"));
+    // These files are public branding and may be embedded by social previews.
+    // Keep Helmet's same-origin policy for all other assets and private APIs.
+    app.use("/brand", (_req, res, next) => {
+      res.set("Cross-Origin-Resource-Policy", "cross-origin");
+      next();
+    });
     app.use(express.static(distDir, { index: false, maxAge: "1h" }));
+    const adminDraft = db.prepare(`SELECT 1 FROM tournaments t
+      JOIN sessions s ON s.token_hash = ?
+      JOIN users u ON u.id = s.user_id
+      WHERE t.id = ? AND t.status = 'draft' AND u.is_admin <> 0 AND s.expires_at > ?`);
     app.use((req, res, next) => {
       if (!["GET", "HEAD"].includes(req.method) || path.extname(req.path))
         return next();
-      res.sendFile(path.join(distDir, "index.html"));
+      const result = seo.render(req.path, template);
+      let { status } = result;
+      // An admin can still reload a draft's SPA page. The HTML itself stays
+      // generic and noindex; details come only from the authorized API.
+      const draftPath =
+        status === 404 ? /^\/tournaments\/(\d+)\/?$/i.exec(req.path) : null;
+      const token = draftPath && readCookie(req);
+      const id = draftPath ? Number(draftPath[1]) : 0;
+      if (
+        token &&
+        Number.isSafeInteger(id) &&
+        id > 0 &&
+        adminDraft.get(sha256(token), id, new Date().toISOString())
+      ) {
+        status = 200;
+      }
+      res.set("Cache-Control", "no-store");
+      if (!result.page.canonical) res.set("X-Robots-Tag", "noindex, nofollow");
+      res.status(status).type("html").send(result.html);
     });
   }
   app.use((error, req, res, _next) => {

@@ -50,9 +50,18 @@ Caddy can provision a certificate for a publicly reachable domain; configure por
 [Service]
 Environment=TRUST_PROXY=true
 Environment=COOKIE_SECURE=true
+Environment=SITE_URL=https://arena.example.com
 ```
 
-Apply the change with `sudo systemctl restart blueclash`. `TRUST_PROXY` must only be enabled behind your own trusted reverse proxy. Remove any public 8989 firewall rule and block it in the cloud firewall when the domain is working. The proxy and TLS setup are deliberately not automated because they depend on your domain and VPS provider.
+Apply the change with `sudo systemctl restart blueclash`. `TRUST_PROXY` must only be enabled behind your own trusted reverse proxy. Replace `arena.example.com` with your public HTTPS domain; `SITE_URL` is an origin only, with no path or query. Remove any public 8989 firewall rule and block it in the cloud firewall when the domain is working. The proxy and TLS setup are deliberately not automated because they depend on your domain and VPS provider.
+
+### Search and link previews
+
+BlueClash serves page titles, descriptions, Open Graph/Twitter tags, a 1200 × 630 branded preview image, a favicon, `robots.txt`, and a dynamic `sitemap.xml`. Public, non-sample published/completed tournaments get their own crawlable descriptions and canonical URLs; drafts, sample events, sign-in, entries, tickets, chat, and admin pages are marked `noindex`. This is a search-engine instruction, **not** an access-control mechanism; private APIs continue to require authorization. The sitemap includes the homepage plus up to 49,999 real public tournaments.
+
+The default canonical origin is **`https://www.blueclash.bond`**. If your public domain is different, set `SITE_URL` as shown above (for example, `https://arena.example.com`), then restart the service. It must be a complete `http://` or `https://` origin with no path, credentials, query or fragment. Use HTTPS for production and make sure the public domain, `/brand/social-card.jpg`, `/robots.txt`, and `/sitemap.xml` are reachable without a login or bot-blocking challenge. Canonical and image URLs are generated from this trusted setting, not from request headers. Configure your reverse proxy or DNS provider to redirect alternate hosts and HTTP to the one HTTPS origin; the app does not configure these redirects or TLS for you.
+
+After deploying, verify your domain in Google Search Console and submit `https://YOUR-DOMAIN/sitemap.xml`. Social services can cache an older preview, so use their preview/debugging tools where available or wait for a refresh. Search engines decide when to crawl, whether to use the metadata and how to rank or display a page; updates do not guarantee a particular result or timeline.
 
 ## How registration and payments work
 
