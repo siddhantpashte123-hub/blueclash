@@ -22,8 +22,13 @@ export async function api(url, { method = "GET", body, ...options } = {}) {
     body: payload,
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(result.error || "Something went wrong. Please try again.");
+  if (!response.ok) {
+    const error = new Error(
+      result.error || "Something went wrong. Please try again.",
+    );
+    error.status = response.status;
+    throw error;
+  }
   return result;
 }
 

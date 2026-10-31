@@ -20,6 +20,7 @@ import Join from "./pages/Join.jsx";
 import Checkout from "./pages/Checkout.jsx";
 import MyEntries from "./pages/MyEntries.jsx";
 import Ticket from "./pages/Ticket.jsx";
+import PlayerChat from "./pages/PlayerChat.jsx";
 import Admin from "./pages/Admin.jsx";
 import { useEffect } from "react";
 
@@ -51,6 +52,7 @@ function App() {
             <Route path="/auth" element={<Auth />} />
             <Route path="/entries/:id" element={<Checkout />} />
             <Route path="/entries/:id/ticket" element={<Ticket />} />
+            <Route path="/entries/:id/chat" element={<PlayerChat />} />
             <Route path="/my-entries" element={<MyEntries />} />
             <Route path="/admin" element={<Admin />} />
             <Route

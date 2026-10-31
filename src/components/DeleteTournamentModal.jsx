@@ -148,15 +148,19 @@ export default function DeleteTournamentModal({
                 <strong>{summary.proofCount}</strong>
                 <span>PAYMENT SCREENSHOTS</span>
               </div>
+              <div>
+                <strong>{summary.messageCount}</strong>
+                <span>CHAT MESSAGES</span>
+              </div>
             </div>
             <div className="notice notice-danger delete-warning">
               <AlertCircle size={20} />
               <div>
                 <strong>This cannot be undone.</strong>
                 <p>
-                  The tournament and all its entries, tickets and payment
-                  screenshots will be permanently deleted. Payments are not
-                  automatically refunded.
+                  The tournament and all its entries, tickets, payment
+                  screenshots and private chat messages will be permanently
+                  deleted. Payments are not automatically refunded.
                 </p>
               </div>
             </div>

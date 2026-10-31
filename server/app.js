@@ -146,6 +146,7 @@ function deletionSummary(db, id) {
     approvedCount: 0,
     proofCount: 0,
     ticketCount: 0,
+    messageCount: 0,
   };
   const rows = db.prepare(
     `SELECT id, status, proof_filename, ticket_code, updated_at
@@ -167,6 +168,17 @@ function deletionSummary(db, id) {
       ]),
     );
   }
+  // Chat history is also deleted with the entries. A newly arrived message
+  // must invalidate a confirmation made against an older preview.
+  const messages = db
+    .prepare(
+      `SELECT COUNT(*) AS count, COALESCE(MAX(m.id), 0) AS last_id
+       FROM chat_messages m JOIN entries e ON e.id = m.entry_id
+       WHERE e.tournament_id = ?`,
+    )
+    .get(event.id);
+  summary.messageCount = messages.count;
+  hash.update(JSON.stringify([messages.count, messages.last_id]));
   return { ...summary, snapshot: hash.digest("hex") };
 }
 
@@ -685,7 +697,23 @@ export function createApp(options = {}) {
     const rows = db
       .prepare(`${ENTRY_SELECT} WHERE e.user_id = ? ORDER BY e.created_at DESC`)
       .all(req.user.id);
-    res.json({ entries: rows.map(entryDto) });
+    const unread = new Map(
+      db
+        .prepare(
+          `SELECT m.entry_id, COUNT(*) AS count FROM chat_messages m
+        JOIN entries e ON e.id = m.entry_id
+        WHERE e.user_id = ? AND e.status = 'approved' AND m.sender_role = 'admin' AND m.read_at IS NULL
+        GROUP BY m.entry_id`,
+        )
+        .all(req.user.id)
+        .map((item) => [item.entry_id, item.count]),
+    );
+    res.json({
+      entries: rows.map((row) => ({
+        ...entryDto(row),
+        unreadMessages: unread.get(row.id) || 0,
+      })),
+    });
   });
 
   app.get("/api/entries/:id", requireUser, async (req, res) => {
@@ -866,6 +894,205 @@ export function createApp(options = {}) {
       res.json({ entry: { id: row.id, status: "pending" } });
     },
   );
+
+  // Messages are stored per confirmed entry, never in a public tournament chat.
+  // The player and organizer use separate routes so an admin who also enters
+  // a tournament can still speak as the player in their own conversation.
+  const chatSendLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    keyGenerator: (req) => `user:${req.user.id}`,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    handler: (_req, res) =>
+      res
+        .status(429)
+        .json({ error: "Too many messages. Please wait a minute." }),
+  });
+  function chatEntry(req, isAdmin) {
+    const row = isAdmin
+      ? db.prepare(`${ENTRY_SELECT} WHERE e.id = ?`).get(req.params.id)
+      : db
+          .prepare(`${ENTRY_SELECT} WHERE e.id = ? AND e.user_id = ?`)
+          .get(req.params.id, req.user.id);
+    if (!row) throw new ApiError(404, "Conversation not found.");
+    if (row.status !== "approved")
+      throw new ApiError(
+        409,
+        "Chat is available after the entry is confirmed.",
+      );
+    return row;
+  }
+  function chatThread(row, isAdmin) {
+    return {
+      entryId: row.id,
+      tournamentId: row.tournament_id,
+      tournamentTitle: row.tournament_title,
+      game: row.tournament_game,
+      playerName: `${row.first_name} ${row.last_name}`,
+      gameName: row.game_name,
+      ...(isAdmin ? { email: row.user_email } : {}),
+    };
+  }
+  function chatMessage(row) {
+    return {
+      id: row.id,
+      senderRole: row.sender_role,
+      text: row.content,
+      createdAt: row.created_at,
+    };
+  }
+  function chatInteger(value, label, allowZero = false) {
+    const raw = typeof value === "number" ? String(value) : value;
+    const pattern = allowZero ? /^(0|[1-9]\d{0,15})$/ : /^[1-9]\d{0,15}$/;
+    if (
+      typeof raw !== "string" ||
+      !pattern.test(raw) ||
+      !Number.isSafeInteger(Number(raw))
+    )
+      throw new ApiError(400, `Invalid ${label}.`);
+    return Number(raw);
+  }
+  function installChatRoutes(route, middleware, isAdmin) {
+    app.get(route, middleware, (req, res) => {
+      const row = chatEntry(req, isAdmin);
+      if (req.query.before !== undefined && req.query.after !== undefined)
+        throw new ApiError(400, "Choose one message cursor.");
+      const before =
+        req.query.before !== undefined
+          ? chatInteger(req.query.before, "message cursor")
+          : null;
+      const after =
+        req.query.after !== undefined
+          ? chatInteger(req.query.after, "message cursor", true)
+          : null;
+      const direction = after !== null ? "ASC" : "DESC";
+      const condition =
+        before !== null ? "AND id < ?" : after !== null ? "AND id > ?" : "";
+      const params = [row.id];
+      if (before !== null) params.push(before);
+      else if (after !== null) params.push(after);
+      const messages = db
+        .prepare(
+          `SELECT id, sender_role, content, created_at FROM chat_messages
+          WHERE entry_id = ? ${condition} ORDER BY id ${direction} LIMIT 51`,
+        )
+        .all(...params);
+      const hasMore = messages.length > 50;
+      const page = messages.slice(0, 50);
+      if (after === null) page.reverse();
+      res.json({
+        thread: chatThread(row, isAdmin),
+        messages: page.map(chatMessage),
+        hasMore,
+      });
+    });
+    app.post(route, middleware, chatSendLimiter, (req, res) => {
+      const content = text(req.body?.message, "Message", 1, 2000).replace(
+        /\r\n?/g,
+        "\n",
+      );
+      if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(content))
+        throw new ApiError(
+          400,
+          "Message contains unsupported control characters.",
+        );
+      const message = transaction(db, () => {
+        // Check again under the same write lock used for tournament deletion.
+        const row = chatEntry(req, isAdmin);
+        const createdAt = new Date().toISOString();
+        const senderRole = isAdmin ? "admin" : "player";
+        const result = db
+          .prepare(
+            `INSERT INTO chat_messages
+          (entry_id, sender_id, sender_role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+          )
+          .run(row.id, req.user.id, senderRole, content, createdAt);
+        return {
+          id: Number(result.lastInsertRowid),
+          senderRole,
+          text: content,
+          createdAt,
+        };
+      });
+      res.status(201).json({ message });
+    });
+    app.post(`${route}/read`, middleware, (req, res) => {
+      const through = chatInteger(req.body?.throughId, "message cursor");
+      transaction(db, () => {
+        const row = chatEntry(req, isAdmin);
+        db.prepare(
+          `UPDATE chat_messages SET read_at = ?
+          WHERE entry_id = ? AND sender_role = ? AND id <= ? AND read_at IS NULL`,
+        ).run(
+          new Date().toISOString(),
+          row.id,
+          isAdmin ? "player" : "admin",
+          through,
+        );
+      });
+      res.json({ ok: true });
+    });
+  }
+  installChatRoutes("/api/entries/:id/chat", requireUser, false);
+  installChatRoutes("/api/admin/entries/:id/chat", requireAdmin, true);
+
+  app.get("/api/admin/chats/unread", requireAdmin, (_req, res) => {
+    const count = db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM chat_messages m
+      JOIN entries e ON e.id = m.entry_id
+      WHERE m.sender_role = 'player' AND m.read_at IS NULL AND e.status = 'approved'`,
+      )
+      .get().count;
+    res.json({ count });
+  });
+  app.get("/api/admin/chats", requireAdmin, (req, res) => {
+    const search = text(req.query.search ?? "", "Search", 0, 100);
+    const tournamentId =
+      req.query.tournamentId === undefined || req.query.tournamentId === ""
+        ? 0
+        : chatInteger(req.query.tournamentId, "tournament");
+    const offset =
+      req.query.offset === undefined
+        ? 0
+        : chatInteger(req.query.offset, "offset", true);
+    if (offset > 1000000) throw new ApiError(400, "Invalid offset.");
+    const like = `%${search}%`;
+    const rows = db
+      .prepare(
+        `SELECT e.id, e.tournament_id, e.first_name, e.last_name, e.game_name,
+        t.title AS tournament_title, t.game, u.email,
+        last.content AS last_message, last.sender_role AS last_sender_role,
+        last.created_at AS last_message_at,
+        (SELECT COUNT(*) FROM chat_messages unread WHERE unread.entry_id = e.id
+         AND unread.sender_role = 'player' AND unread.read_at IS NULL) AS unread_count
+      FROM entries e JOIN tournaments t ON t.id = e.tournament_id JOIN users u ON u.id = e.user_id
+      LEFT JOIN chat_messages last ON last.id =
+        (SELECT id FROM chat_messages WHERE entry_id = e.id ORDER BY id DESC LIMIT 1)
+      WHERE e.status = 'approved' AND (? = 0 OR e.tournament_id = ?)
+        AND (? = '' OR e.first_name || ' ' || e.last_name LIKE ?
+          OR e.game_name LIKE ? OR u.email LIKE ? OR t.title LIKE ?)
+      ORDER BY (last.id IS NULL), last.id DESC, e.id DESC LIMIT 51 OFFSET ?`,
+      )
+      .all(tournamentId, tournamentId, search, like, like, like, like, offset);
+    res.json({
+      threads: rows.slice(0, 50).map((row) => ({
+        entryId: row.id,
+        tournamentId: row.tournament_id,
+        tournamentTitle: row.tournament_title,
+        game: row.game,
+        playerName: `${row.first_name} ${row.last_name}`,
+        gameName: row.game_name,
+        email: row.email,
+        lastMessage: row.last_message,
+        lastSenderRole: row.last_sender_role,
+        lastMessageAt: row.last_message_at,
+        unreadCount: row.unread_count,
+      })),
+      hasMore: rows.length > 50,
+    });
+  });
 
   app.get("/api/admin/overview", requireAdmin, (_req, res) => {
     const count = (sql) => db.prepare(sql).get().count;
