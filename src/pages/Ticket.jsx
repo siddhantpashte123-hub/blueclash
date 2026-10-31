@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Download,
   Gamepad2,
+  MessageCircle,
   Printer,
   ShieldCheck,
   Ticket as TicketIcon,
@@ -307,6 +308,9 @@ export default function Ticket() {
           >
             <Printer size={16} /> PRINT / SAVE PDF
           </button>
+          <Link to={`/entries/${id}/chat`} className="button button-chat">
+            <MessageCircle size={16} /> CHAT WITH ADMIN
+          </Link>
           <Link to={`/entries/${id}`} className="text-link">
             VIEW ENTRY <ArrowUpRight size={15} />
           </Link>

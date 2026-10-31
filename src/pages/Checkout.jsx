@@ -11,6 +11,7 @@ import {
   ExternalLink,
   ImagePlus,
   LockKeyhole,
+  MessageCircle,
   RefreshCw,
   ShieldCheck,
   UploadCloud,
@@ -197,8 +198,8 @@ export default function Checkout() {
                 </h2>
                 <p>
                   {entry.status === "approved"
-                    ? "Your place is confirmed and your ticket is ready. Get ready to bring your best game."
-                    : "Your screenshot is with the organizer. Your ticket will appear in My Entries after they verify your payment."}
+                    ? "Your place is confirmed and your ticket is ready. You can also chat privately with the organizer for match details."
+                    : "Your screenshot is with the organizer. Your ticket and private chat will appear in My Entries after they verify your payment."}
                 </p>
                 <StatusBadge status={entry.status} />
                 {entry.reviewNote && (
@@ -214,6 +215,12 @@ export default function Checkout() {
                         className="button button-primary"
                       >
                         VIEW MY TICKET <ArrowUpRight size={16} />
+                      </Link>
+                      <Link
+                        to={`/entries/${id}/chat`}
+                        className="button button-chat"
+                      >
+                        <MessageCircle size={16} /> CHAT WITH ADMIN
                       </Link>
                       <Link to="/my-entries" className="text-link">
                         MY ENTRIES <ArrowUpRight size={15} />

@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Eye,
   LayoutDashboard,
+  MessageCircle,
   Plus,
   QrCode,
   Save,
@@ -33,6 +34,7 @@ import {
 import SettingsPanel from "../components/SettingsPanel.jsx";
 import VerifyTicket from "../components/VerifyTicket.jsx";
 import DeleteTournamentModal from "../components/DeleteTournamentModal.jsx";
+import AdminChats from "../components/AdminChats.jsx";
 
 const defaultRules =
   "Play fair and respect every participant.\nUse the in-game details provided during registration.\nBe ready before the scheduled start time.\nThe organizer’s decision is final.";
@@ -371,7 +373,7 @@ function TournamentEditor({ tournament, onClose, onSaved }) {
   );
 }
 
-function ReviewModal({ entry, onClose, onReviewed }) {
+function ReviewModal({ entry, onClose, onReviewed, onChat }) {
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -484,6 +486,16 @@ function ReviewModal({ entry, onClose, onReviewed }) {
             )}
           </div>
         </div>
+        {entry.status === "approved" && (
+          <div className="review-actions">
+            <button
+              className="button button-chat"
+              onClick={() => onChat(entry)}
+            >
+              <MessageCircle size={16} /> CHAT WITH PLAYER
+            </button>
+          </div>
+        )}
         {entry.status === "pending" && (
           <>
             <div className="notice notice-warning">
@@ -546,6 +558,8 @@ export default function Admin() {
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [reviewing, setReviewing] = useState(null);
+  const [chatEntryId, setChatEntryId] = useState(null);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [filter, setFilter] = useState("pending");
   const load = useCallback(async () => {
     try {
@@ -564,9 +578,30 @@ export default function Admin() {
       setError(err.message);
     }
   }, []);
+  const loadUnread = useCallback(async () => {
+    try {
+      const result = await api("/admin/chats/unread");
+      setUnreadMessages(result.count);
+    } catch {
+      // The main admin view already reports authentication/network errors.
+    }
+  }, []);
   useEffect(() => {
     if (user?.isAdmin) load();
   }, [user?.id, user?.isAdmin, load]);
+  useEffect(() => {
+    if (!user?.isAdmin) return;
+    const update = () => {
+      if (!document.hidden) loadUnread();
+    };
+    update();
+    const timer = setInterval(update, 15000);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [user?.id, user?.isAdmin, loadUnread]);
   useEffect(() => {
     if (scannedTicket && user?.isAdmin) setTab("verify");
   }, [scannedTicket, user?.isAdmin]);
@@ -601,6 +636,11 @@ export default function Admin() {
     setMessage("");
     setWarning("");
   };
+  const openChat = (entry) => {
+    setReviewing(null);
+    setChatEntryId(entry.id);
+    changeTab("chats");
+  };
   if (authLoading)
     return (
       <div className="container narrow-page">
@@ -633,6 +673,11 @@ export default function Admin() {
     );
   const nav = [
     { id: "overview", label: "Overview", icon: <LayoutDashboard size={17} /> },
+    {
+      id: "chats",
+      label: "Player messages",
+      icon: <MessageCircle size={17} />,
+    },
     { id: "tournaments", label: "Tournaments", icon: <Trophy size={17} /> },
     {
       id: "entries",
@@ -672,6 +717,14 @@ export default function Admin() {
                 {item.label}
                 {item.id === "entries" && stats?.pending > 0 && (
                   <span className="admin-count">{stats.pending}</span>
+                )}
+                {item.id === "chats" && unreadMessages > 0 && (
+                  <span
+                    className="admin-count"
+                    aria-label={`${unreadMessages} unread messages`}
+                  >
+                    {unreadMessages > 99 ? "99+" : unreadMessages}
+                  </span>
                 )}
               </button>
             ))}
@@ -823,6 +876,7 @@ export default function Admin() {
                         .filter((e) => e.status === "pending")
                         .slice(0, 5)}
                       onSelect={setReviewing}
+                      onChat={openChat}
                       empty="No pending payment proofs. You're all caught up."
                     />
                   </>
@@ -935,9 +989,17 @@ export default function Admin() {
                     <EntryList
                       entries={filteredEntries}
                       onSelect={setReviewing}
+                      onChat={openChat}
                       empty="No entries in this category yet."
                     />
                   </>
+                )}
+                {tab === "chats" && (
+                  <AdminChats
+                    tournaments={events}
+                    initialEntryId={chatEntryId}
+                    onActivity={loadUnread}
+                  />
                 )}
                 {tab === "verify" && (
                   <VerifyTicket initialCode={scannedTicket} />
@@ -962,13 +1024,14 @@ export default function Admin() {
           entry={reviewing}
           onClose={() => setReviewing(null)}
           onReviewed={done}
+          onChat={openChat}
         />
       )}
     </div>
   );
 }
 
-function EntryList({ entries, onSelect, empty }) {
+function EntryList({ entries, onSelect, onChat, empty }) {
   return entries.length ? (
     <div className="admin-entry-list">
       {entries.map((entry) => (
@@ -991,9 +1054,16 @@ function EntryList({ entries, onSelect, empty }) {
             </small>
           </div>
           <StatusBadge status={entry.status} />
-          <button className="small-button" onClick={() => onSelect(entry)}>
-            <Eye size={15} /> REVIEW
-          </button>
+          <div className="admin-entry-actions">
+            {entry.status === "approved" && (
+              <button className="small-button" onClick={() => onChat(entry)}>
+                <MessageCircle size={15} /> CHAT
+              </button>
+            )}
+            <button className="small-button" onClick={() => onSelect(entry)}>
+              <Eye size={15} /> REVIEW
+            </button>
+          </div>
         </div>
       ))}
     </div>

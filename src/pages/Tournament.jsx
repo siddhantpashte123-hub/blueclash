@@ -9,6 +9,7 @@ import {
   CircleHelp,
   Clock3,
   Gamepad2,
+  MessageCircle,
   ShieldCheck,
   Swords,
   Ticket,
@@ -299,6 +300,14 @@ export default function Tournament() {
                 {myEntry ? "VIEW MY ENTRY" : "ENTER TOURNAMENT"}{" "}
                 <ArrowUpRight size={17} />
               </button>
+              {myEntry?.status === "approved" && (
+                <Link
+                  className="button button-chat full-width tournament-chat-link"
+                  to={`/entries/${myEntry.id}/chat`}
+                >
+                  <MessageCircle size={16} /> CHAT WITH ADMIN
+                </Link>
+              )}
               <div className="secure-note">
                 <ShieldCheck size={14} />{" "}
                 {t.entryFee === 0

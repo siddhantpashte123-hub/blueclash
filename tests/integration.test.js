@@ -864,9 +864,9 @@ test("upgrading an old database preserves UPI and issues stable tickets for exis
     path.join(os.tmpdir(), "blueclash-migration-test-"),
   );
   const legacy = openDatabase(dir);
-  // Recreate the entry schema from before ticket columns existed.
+  // Recreate the entry schema from before tickets and private chats existed.
   legacy.exec(
-    "DROP INDEX entries_ticket_code; ALTER TABLE entries DROP COLUMN ticket_code; ALTER TABLE entries DROP COLUMN ticket_issued_at;",
+    "DROP TABLE chat_messages; DROP INDEX entries_ticket_code; ALTER TABLE entries DROP COLUMN ticket_code; ALTER TABLE entries DROP COLUMN ticket_issued_at;",
   );
   const stamp = "2025-01-02T03:04:05.000Z";
   const hash = await hashPassword("legacy-password-123");
@@ -977,6 +977,23 @@ test("upgrading an old database preserves UPI and issues stable tickets for exis
   assert.equal(config.paymentConfigured, true);
   assert.equal(config.upiId, "old@bank");
   const ownerCookie = await login("approved@example.com");
+  const legacyChat = await fetch(`${base}/entries/${approvedEntry}/chat`, {
+    method: "POST",
+    headers: {
+      Cookie: ownerCookie,
+      "Content-Type": "application/json",
+      "X-Requested-With": "BlueClash",
+    },
+    body: JSON.stringify({ message: "Where do I find the server IP?" }),
+  });
+  assert.equal(legacyChat.status, 201);
+  const adminChat = await fetch(`${base}/admin/entries/${approvedEntry}/chat`, {
+    headers: { Cookie: adminCookie },
+  });
+  assert.equal(
+    (await adminChat.json()).messages[0].text,
+    "Where do I find the server IP?",
+  );
   const ticketResponse = await fetch(
     `${base}/entries/${approvedEntry}/ticket`,
     { headers: { Cookie: ownerCookie } },

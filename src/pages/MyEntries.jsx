@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   CalendarDays,
   Gamepad2,
+  MessageCircle,
   Ticket,
 } from "lucide-react";
 import {
@@ -22,10 +23,29 @@ export default function MyEntries() {
   const [entries, setEntries] = useState(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    if (user)
+    if (!user) return;
+    let active = true;
+    const load = () => {
+      if (document.hidden) return;
       api("/me/entries")
-        .then((data) => setEntries(data.entries))
-        .catch((err) => setError(err.message));
+        .then((data) => {
+          if (active) {
+            setEntries(data.entries);
+            setError("");
+          }
+        })
+        .catch((err) => {
+          if (active) setError(err.message);
+        });
+    };
+    load();
+    const timer = setInterval(load, 15000);
+    document.addEventListener("visibilitychange", load);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", load);
+    };
   }, [user?.id]);
   if (authLoading)
     return (
@@ -98,25 +118,45 @@ export default function MyEntries() {
                     <StatusBadge status={entry.status} />
                     {entry.status === "pending" && (
                       <small className="my-entry-note">
-                        Ticket available after approval.
+                        Ticket and chat available after approval.
                       </small>
                     )}
                   </div>
-                  <Link
-                    className="button button-outline"
-                    to={
-                      entry.status === "approved"
-                        ? `/entries/${entry.id}/ticket`
-                        : `/entries/${entry.id}`
-                    }
-                  >
-                    {entry.status === "approved"
-                      ? "VIEW TICKET"
-                      : entry.status === "awaiting_payment"
-                        ? "CONTINUE CHECKOUT"
-                        : "VIEW ENTRY"}{" "}
-                    <ArrowUpRight size={15} />
-                  </Link>
+                  <div className="my-entry-buttons">
+                    <Link
+                      className="button button-outline"
+                      to={
+                        entry.status === "approved"
+                          ? `/entries/${entry.id}/ticket`
+                          : `/entries/${entry.id}`
+                      }
+                    >
+                      {entry.status === "approved"
+                        ? "VIEW TICKET"
+                        : entry.status === "awaiting_payment"
+                          ? "CONTINUE CHECKOUT"
+                          : "VIEW ENTRY"}{" "}
+                      <ArrowUpRight size={15} />
+                    </Link>
+                    {entry.status === "approved" && (
+                      <Link
+                        className="button button-chat"
+                        to={`/entries/${entry.id}/chat`}
+                      >
+                        <MessageCircle size={15} /> CHAT WITH ADMIN
+                        {entry.unreadMessages > 0 && (
+                          <span
+                            className="chat-unread"
+                            aria-label={`${entry.unreadMessages} unread messages`}
+                          >
+                            {entry.unreadMessages > 99
+                              ? "99+"
+                              : entry.unreadMessages}
+                          </span>
+                        )}
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </article>
             ))}

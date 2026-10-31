@@ -79,6 +79,17 @@ export function openDatabase(
     CREATE INDEX IF NOT EXISTS entries_tournament_status ON entries(tournament_id, status);
     CREATE INDEX IF NOT EXISTS entries_user ON entries(user_id);
     CREATE INDEX IF NOT EXISTS entries_proof_filename ON entries(proof_filename) WHERE proof_filename IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+      sender_id INTEGER NOT NULL REFERENCES users(id),
+      sender_role TEXT NOT NULL CHECK(sender_role IN ('player', 'admin')),
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      read_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS chat_messages_entry ON chat_messages(entry_id, id);
+    CREATE INDEX IF NOT EXISTS chat_messages_unread ON chat_messages(sender_role, entry_id, id) WHERE read_at IS NULL;
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL

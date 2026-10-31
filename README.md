@@ -66,9 +66,15 @@ Apply the change with `sudo systemctl restart blueclash`. `TRUST_PROXY` must onl
 
 **BlueClash does not process or automatically verify payments, send refunds, or guarantee a payment. A screenshot alone is not proof of funds.** Verify the transaction independently before approving. The organizer is responsible for their event rules, refund policy, player communications, applicable local laws, taxes, and privacy obligations.
 
+### Private tournament chat
+
+After an entry is confirmed, the player can open **My Entries → Chat with Admin** (free entries are confirmed immediately). The organizer can select **Admin → Player messages** or open a confirmed entry and choose **Chat with player**. Each entry has its own conversation; only that player and administrator accounts can access it. Organizers can start the conversation and manually send the server IP, port, match time and other details. The app does not create or detect a game server.
+
+Messages are plain text, stored in the VPS database, and refresh every few seconds while the chat is open. Unread counts appear in the admin inbox and on the player's entry; there are no email or push notifications. Chats are access-controlled, but not end-to-end encrypted: all administrators can read them. Use HTTPS and do not send passwords, payment credentials or OTPs through chat.
+
 ### Delete a test tournament
 
-In **Admin → Tournaments**, select the trash icon, review the entry, ticket and screenshot counts, and type `DELETE` to confirm. This permanently removes the tournament and its associated entries, tickets and payment screenshots; player accounts, other tournaments and the organizer's payment QR are retained. No refunds are issued automatically. To preserve the records instead, cancel and set the tournament visibility to **Completed**. Deleting data from the app does not remove it from existing backups.
+In **Admin → Tournaments**, select the trash icon, review the entry, ticket, screenshot and message counts, and type `DELETE` to confirm. This permanently removes the tournament and its associated entries, tickets, payment screenshots and private chat messages; player accounts, other tournaments and the organizer's payment QR are retained. No refunds are issued automatically. To preserve the records instead, cancel and set the tournament visibility to **Completed**. Deleting data from the app does not remove it from existing backups.
 
 If a screenshot cannot be removed, the admin will see a warning. The app keeps a cleanup queue and retries when the service restarts; check `journalctl -u blueclash` for errors.
 
