@@ -28,6 +28,56 @@ fi
 has_tty() { ( : < /dev/tty ) 2>/dev/null; }
 read_tty() { local prompt="$1" var="$2"; IFS= read -r -p "$prompt" "$var" < /dev/tty; }
 
+# Health checks must reach the local app directly, not a proxy configured in
+# the installing user's environment or curl config. Check the response body as
+# well as the HTTP status so an unrelated service cannot look healthy.
+check_blueclash_health() {
+  local url="${1:-http://127.0.0.1:8989/api/health}" retries="${2:-0}" response
+  response="$(curl -q --noproxy '*' --silent --show-error --fail \
+    --connect-timeout 2 --max-time 3 --retry "$retries" \
+    --retry-connrefused --retry-delay 1 -- "$url")" || return 1
+  [[ "$response" == '{"ok":true}' ]]
+}
+
+# Match the IPv4 wildcard address used by the app. Never stop or kill another
+# program to make the port available; report the conflict to the operator.
+blueclash_port_available() {
+  local node_bin="$1" port="${2:-8989}"
+  "$node_bin" -e '
+    const net = require("node:net");
+    const server = net.createServer();
+    server.once("error", (error) => {
+      console.error(`Port check failed: ${error.code || error.message}`);
+      process.exitCode = 1;
+    });
+    server.listen(Number(process.argv[1]), "0.0.0.0", () => server.close());
+  ' "$port"
+}
+
+# Stop only our own existing service for the check. If a different program has
+# the port, leave it alone and restore the old BlueClash service when possible.
+prepare_blueclash_port() {
+  local node_bin="$1" port="${2:-8989}" was_active=0
+  if systemctl is-active --quiet blueclash.service 2>/dev/null; then
+    was_active=1
+    if ! systemctl stop blueclash.service; then
+      warn "Could not stop the existing BlueClash service; the previous installation was not replaced."
+      return 1
+    fi
+  else
+    systemctl stop blueclash.service 2>/dev/null || true
+  fi
+  if ! blueclash_port_available "$node_bin" "$port"; then
+    warn "Cannot use TCP port $port. Another process may already be listening on it."
+    if command -v ss >/dev/null 2>&1; then ss -ltnp "( sport = :$port )" || true; fi
+    warn "Check the port owner with: ss -ltnp | grep ':$port'"
+    if (( was_active )); then
+      systemctl start blueclash.service || warn "Could not restart the previous BlueClash service; check systemctl status blueclash."
+    fi
+    return 1
+  fi
+}
+
 check_system() {
   [[ -r /etc/os-release ]] || die "Cannot identify this Linux distribution."
   # shellcheck disable=SC1091
@@ -108,8 +158,8 @@ install_blueclash() {
     say "Existing database found; administrator accounts and uploads will be kept."
   fi
 
-  say "Configuring the system service..."
-  systemctl stop blueclash.service 2>/dev/null || true
+  say "Checking port 8989 and configuring the system service..."
+  prepare_blueclash_port "$node_path" 8989 || return 1
   rm -rf -- "${APP_DIR}.previous" "${NODE_DIR}.previous"
   [[ ! -e "$APP_DIR" ]] || mv "$APP_DIR" "${APP_DIR}.previous"
   mv "$WORK_DIR/app" "$APP_DIR"
@@ -149,13 +199,16 @@ SERVICE
   local failed=0
   systemctl enable --now blueclash.service || failed=1
   if (( ! failed )); then
-    local health
-    health="$(curl --silent --show-error --fail --retry 8 --retry-connrefused --retry-delay 1 http://127.0.0.1:8989/api/health)" || failed=1
-    [[ "$health" == '{"ok":true}' ]] || failed=1
+    if ! check_blueclash_health http://127.0.0.1:8989/api/health 8; then
+      warn "The local BlueClash health check did not return the expected response."
+      failed=1
+    fi
     systemctl is-active --quiet blueclash.service || failed=1
   fi
   if (( failed )); then
-    warn "The service did not start. Check: journalctl -u blueclash -n 100 --no-pager"
+    warn "The service is not healthy. Check: systemctl status blueclash --no-pager -l"
+    warn "Service logs: journalctl -u blueclash -n 100 --no-pager"
+    warn "Port owner: ss -ltnp | grep ':8989'"
     if [[ -d "${APP_DIR}.previous" ]]; then
       warn "Restoring the previous application."
       systemctl stop blueclash.service 2>/dev/null || true
@@ -187,7 +240,7 @@ show_status() {
   else
     echo 'Service: NOT INSTALLED'
   fi
-  if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 3 http://127.0.0.1:8989/api/health >/dev/null 2>&1; then
+  if command -v curl >/dev/null 2>&1 && check_blueclash_health http://127.0.0.1:8989/api/health >/dev/null 2>&1; then
     echo 'Website: responding on port 8989'
   else
     echo 'Website: not responding on port 8989'
