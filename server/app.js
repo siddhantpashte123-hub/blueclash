@@ -124,6 +124,100 @@ function settings(db, uploadDir) {
   };
 }
 
+// Deletion previews include every entry, including expired and rejected ones.
+// The snapshot ensures the admin never confirms an out-of-date set of records.
+function deletionSummary(db, id) {
+  const event = db
+    .prepare(
+      "SELECT id, title, status, updated_at FROM tournaments WHERE id = ?",
+    )
+    .get(id);
+  if (!event) throw new ApiError(404, "Tournament not found.");
+  const hash = crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify([event.id, event.title, event.status, event.updated_at]),
+    );
+  const summary = {
+    id: event.id,
+    title: event.title,
+    entryCount: 0,
+    pendingCount: 0,
+    approvedCount: 0,
+    proofCount: 0,
+    ticketCount: 0,
+  };
+  const rows = db.prepare(
+    `SELECT id, status, proof_filename, ticket_code, updated_at
+     FROM entries WHERE tournament_id = ? ORDER BY id`,
+  );
+  for (const row of rows.iterate(event.id)) {
+    summary.entryCount++;
+    if (row.status === "pending") summary.pendingCount++;
+    if (row.status === "approved") summary.approvedCount++;
+    if (row.proof_filename) summary.proofCount++;
+    if (row.status === "approved" && row.ticket_code) summary.ticketCount++;
+    hash.update(
+      JSON.stringify([
+        row.id,
+        row.status,
+        row.proof_filename,
+        row.ticket_code,
+        row.updated_at,
+      ]),
+    );
+  }
+  return { ...summary, snapshot: hash.digest("hex") };
+}
+
+// The queue is committed with the database deletion. If the process stops or
+// an unlink fails, cleanup can be retried on the next start without losing the
+// reference to a private payment screenshot.
+function cleanupQueuedProofs(db, uploadDir, filenames) {
+  const queued =
+    filenames ||
+    db
+      .prepare("SELECT filename FROM proof_deletion_queue")
+      .all()
+      .map((row) => row.filename);
+  const stillUsed = db.prepare(
+    "SELECT 1 FROM entries WHERE proof_filename = ? LIMIT 1",
+  );
+  const forget = db.prepare(
+    "DELETE FROM proof_deletion_queue WHERE filename = ?",
+  );
+  let failures = 0;
+  for (const filename of new Set(queued)) {
+    try {
+      const file = storedImagePath(uploadDir, filename);
+      if (!file)
+        throw new Error("Invalid stored filename; manual cleanup required.");
+      // Never remove a file still used by another entry or the organizer's QR.
+      if (
+        stillUsed.get(filename) ||
+        getSetting(db, "payment_qr_filename") === filename
+      ) {
+        forget.run(filename);
+        continue;
+      }
+      try {
+        fs.unlinkSync(file);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      forget.run(filename);
+    } catch (error) {
+      failures++;
+      console.error(
+        "Could not remove queued payment screenshot:",
+        JSON.stringify(filename),
+        error.message,
+      );
+    }
+  }
+  return failures;
+}
+
 const TOURNAMENT_SELECT = `SELECT t.*,
   (SELECT COUNT(*) FROM entries e WHERE e.tournament_id = t.id AND
     (e.status IN ('pending', 'approved') OR (e.status = 'awaiting_payment' AND e.hold_expires_at > ?))) AS reserved_count
@@ -280,6 +374,7 @@ export function createApp(options = {}) {
   );
   const db = openDatabase(dataDir);
   const uploadDir = path.join(dataDir, "uploads");
+  cleanupQueuedProofs(db, uploadDir);
   const app = express();
   app.locals.db = db;
   app.disable("x-powered-by");
@@ -706,47 +801,68 @@ export function createApp(options = {}) {
     requireUser,
     upload.single("screenshot"),
     (req, res) => {
-      const row = db
-        .prepare(`${ENTRY_SELECT} WHERE e.id = ? AND e.user_id = ?`)
-        .get(req.params.id, req.user.id);
-      if (!row) throw new ApiError(404, "Entry not found.");
-      if (
-        !["awaiting_payment", "rejected"].includes(row.status) ||
-        row.amount_paise <= 0
-      )
-        throw new ApiError(
-          409,
-          "Payment proof cannot be submitted for this entry.",
-        );
-      if (!req.file)
-        throw new ApiError(400, "Please select a payment screenshot.");
-      const type = validateImage(req.file.buffer);
-      if (!type) throw new ApiError(400, "Upload a PNG, JPEG, or WebP image.");
-      const reference = text(
-        req.body?.reference ?? "",
-        "Transaction reference",
-        0,
-        100,
-      );
-      const filename = `${crypto.randomBytes(24).toString("hex")}.${type.ext}`;
-      const destination = path.join(uploadDir, filename);
-      fs.writeFileSync(destination, req.file.buffer, {
-        mode: 0o600,
-        flag: "wx",
-      });
+      let destination = "";
+      let fileCreated = false;
+      let row;
       try {
-        db.prepare(
-          `UPDATE entries SET proof_filename=?, proof_mime=?, payment_reference=?, status='pending',
-        review_note='', updated_at=? WHERE id=?`,
-        ).run(filename, type.mime, reference, new Date().toISOString(), row.id);
+        // Hold the same SQLite write lock used by tournament deletion. A proof
+        // upload cannot succeed for an entry deleted between its read and write.
+        row = transaction(db, () => {
+          const current = db
+            .prepare(`${ENTRY_SELECT} WHERE e.id = ? AND e.user_id = ?`)
+            .get(req.params.id, req.user.id);
+          if (!current) throw new ApiError(404, "Entry not found.");
+          if (
+            !["awaiting_payment", "rejected"].includes(current.status) ||
+            current.amount_paise <= 0
+          )
+            throw new ApiError(
+              409,
+              "Payment proof cannot be submitted for this entry.",
+            );
+          if (!req.file)
+            throw new ApiError(400, "Please select a payment screenshot.");
+          const type = validateImage(req.file.buffer);
+          if (!type)
+            throw new ApiError(400, "Upload a PNG, JPEG, or WebP image.");
+          const reference = text(
+            req.body?.reference ?? "",
+            "Transaction reference",
+            0,
+            100,
+          );
+          const filename = `${crypto.randomBytes(24).toString("hex")}.${type.ext}`;
+          destination = path.join(uploadDir, filename);
+          const fd = fs.openSync(destination, "wx", 0o600);
+          fileCreated = true;
+          try {
+            fs.writeFileSync(fd, req.file.buffer);
+          } finally {
+            fs.closeSync(fd);
+          }
+          db.prepare(
+            `UPDATE entries SET proof_filename=?, proof_mime=?, payment_reference=?, status='pending',
+            review_note='', updated_at=? WHERE id=?`,
+          ).run(
+            filename,
+            type.mime,
+            reference,
+            new Date().toISOString(),
+            current.id,
+          );
+          if (current.proof_filename) {
+            db.prepare(
+              "INSERT OR IGNORE INTO proof_deletion_queue (filename) VALUES (?)",
+            ).run(current.proof_filename);
+          }
+          return current;
+        });
       } catch (error) {
-        fs.unlinkSync(destination);
+        if (fileCreated) fs.rmSync(destination, { force: true });
         throw error;
       }
       if (row.proof_filename)
-        fs.rmSync(path.join(uploadDir, path.basename(row.proof_filename)), {
-          force: true,
-        });
+        cleanupQueuedProofs(db, uploadDir, [row.proof_filename]);
       res.json({ entry: { id: row.id, status: "pending" } });
     },
   );
@@ -860,20 +976,57 @@ export function createApp(options = {}) {
     });
   });
 
+  app.get(
+    "/api/admin/tournaments/:id/deletion-summary",
+    requireAdmin,
+    (req, res) => {
+      res.json({ summary: deletionSummary(db, req.params.id) });
+    },
+  );
+
   app.delete("/api/admin/tournaments/:id", requireAdmin, (req, res) => {
-    const row = tournamentById(db, req.params.id);
-    if (!row) throw new ApiError(404, "Tournament not found.");
-    if (
-      db
-        .prepare("SELECT 1 FROM entries WHERE tournament_id = ? LIMIT 1")
-        .get(row.id)
-    )
-      throw new ApiError(
-        409,
-        "This tournament has entries. Mark it completed instead to preserve their records.",
+    const result = transaction(db, () => {
+      const summary = deletionSummary(db, req.params.id);
+      // Old clients may still delete an empty event without a request body.
+      // Anything with entries requires an explicit, current confirmation.
+      const hasBody = req.body && Object.keys(req.body).length > 0;
+      if (summary.entryCount > 0 || hasBody) {
+        if (
+          req.body?.confirmation !== "DELETE" ||
+          !/^[a-f0-9]{64}$/.test(req.body?.snapshot || "")
+        ) {
+          throw new ApiError(
+            409,
+            "Confirm deletion of this tournament and its entries in the admin panel.",
+          );
+        }
+        if (req.body.snapshot !== summary.snapshot) {
+          throw new ApiError(
+            409,
+            "This tournament or its entries changed. Review the updated details and confirm again.",
+          );
+        }
+      }
+      const filenames = db
+        .prepare(
+          "SELECT DISTINCT proof_filename FROM entries WHERE tournament_id = ? AND proof_filename IS NOT NULL AND proof_filename != ''",
+        )
+        .all(summary.id)
+        .map((row) => row.proof_filename);
+      const enqueue = db.prepare(
+        "INSERT OR IGNORE INTO proof_deletion_queue (filename) VALUES (?)",
       );
-    db.prepare("DELETE FROM tournaments WHERE id = ?").run(row.id);
-    res.json({ ok: true });
+      for (const filename of filenames) enqueue.run(filename);
+      db.prepare("DELETE FROM entries WHERE tournament_id = ?").run(summary.id);
+      db.prepare("DELETE FROM tournaments WHERE id = ?").run(summary.id);
+      return { entryCount: summary.entryCount, filenames };
+    });
+    const cleanupFailures = cleanupQueuedProofs(
+      db,
+      uploadDir,
+      result.filenames,
+    );
+    res.json({ ok: true, deletedEntries: result.entryCount, cleanupFailures });
   });
 
   app.get("/api/admin/entries", requireAdmin, (req, res) => {

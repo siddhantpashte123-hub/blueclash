@@ -78,9 +78,13 @@ export function openDatabase(
     );
     CREATE INDEX IF NOT EXISTS entries_tournament_status ON entries(tournament_id, status);
     CREATE INDEX IF NOT EXISTS entries_user ON entries(user_id);
+    CREATE INDEX IF NOT EXISTS entries_proof_filename ON entries(proof_filename) WHERE proof_filename IS NOT NULL;
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS proof_deletion_queue (
+      filename TEXT PRIMARY KEY
     );
   `);
 
