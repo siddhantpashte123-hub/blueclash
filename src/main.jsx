@@ -13,6 +13,7 @@ import "@fontsource/barlow-condensed/800.css";
 import "./styles.css";
 import { AuthProvider } from "./shared.jsx";
 import { Footer, Header } from "./components/Layout.jsx";
+import RouteSeo from "./components/RouteSeo.jsx";
 import Home from "./pages/Home.jsx";
 import Tournament from "./pages/Tournament.jsx";
 import Auth from "./pages/Auth.jsx";
@@ -43,6 +44,7 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <ScrollToTop />
+        <RouteSeo />
         <Header />
         <main>
           <Routes>

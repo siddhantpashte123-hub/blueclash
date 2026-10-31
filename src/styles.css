@@ -64,6 +64,34 @@ img {
   color: #fff;
   background: #3268ff;
 }
+/* Readable public content for crawlers and visitors without JavaScript. */
+.seo-fallback {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  line-height: 1.7;
+}
+.seo-fallback h1,
+.seo-fallback h2 {
+  font-family: var(--head);
+  line-height: 1.15;
+}
+.seo-fallback h1 {
+  font-size: 42px;
+}
+.seo-fallback h2 {
+  font-size: 28px;
+}
+.seo-fallback a {
+  color: #91b3ff;
+  text-decoration: underline;
+}
+.seo-fallback dd {
+  margin: 0 0 12px;
+}
+.seo-fallback dt {
+  color: var(--muted);
+}
 .container {
   width: min(1240px, calc(100% - 80px));
   margin: 0 auto;
@@ -117,18 +145,15 @@ img {
   flex-shrink: 0;
 }
 .brand-mark {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  background: #3268ff;
-  color: white;
-  clip-path: polygon(0 0, 100% 0, 100% 78%, 79% 100%, 0 100%);
-  box-shadow: 0 0 22px #3268ff33;
+  width: 44px;
+  height: 44px;
+  flex: none;
 }
-.brand-mark svg {
-  width: 26px;
-  height: 26px;
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .brand-word {
   font-family: var(--head);
@@ -3562,15 +3587,11 @@ img {
   gap: 4px;
   font: 800 25px/1 var(--head);
 }
-.ticket-brand > span:first-child {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
+.ticket-brand > img {
+  width: 38px;
+  height: 38px;
   margin-right: 6px;
-  background: #3268ff;
-  font: 800 22px/1 var(--head);
-  color: #fff;
+  object-fit: contain;
 }
 .ticket-brand > span:last-child {
   color: #86a9ff;

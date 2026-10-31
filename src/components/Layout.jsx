@@ -23,12 +23,7 @@ export function Brand({ footer = false }) {
       aria-label="BlueClash home"
     >
       <span className="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 40 40" fill="none">
-          <path
-            d="M8 6h14.5C29 6 33 9.4 33 14.6c0 3.3-1.7 5.7-4.5 7 3.6 1.2 5.3 3.8 5.3 7.1C33.8 34 29.5 37 22.5 37H8V6Zm8.1 6.6v6h5.4c2.2 0 3.4-1 3.4-3s-1.2-3-3.4-3h-5.4Zm0 12.3v5.5h5.7c2.5 0 3.8-.9 3.8-2.8s-1.3-2.7-3.8-2.7h-5.7Z"
-            fill="currentColor"
-          />
-        </svg>
+        <img src="/brand/logo-192.png" width="48" height="48" alt="" />
       </span>
       <span className="brand-word">
         BLUE<span>CLASH</span>

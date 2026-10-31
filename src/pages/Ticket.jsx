@@ -52,9 +52,19 @@ async function downloadTicket(ticket, qrCode) {
   ctx.strokeStyle = "#405a83";
   ctx.lineWidth = 3;
   ctx.strokeRect(2, 2, 1196, 676);
-  ctx.fillStyle = "#346aff";
-  ctx.fillRect(48, 46, 48, 48);
-  fitText(ctx, "B", 59, 84, 35, 42, "#ffffff");
+  const logo = new Image();
+  const logoLoaded = await new Promise((resolve) => {
+    logo.onload = () => resolve(true);
+    logo.onerror = () => resolve(false);
+    logo.src = "/brand/logo-192.png";
+  });
+  if (logoLoaded) ctx.drawImage(logo, 43, 40, 60, 60);
+  else {
+    // The ticket is still downloadable if the logo asset is unavailable.
+    ctx.fillStyle = "#346aff";
+    ctx.fillRect(48, 46, 48, 48);
+    fitText(ctx, "B", 59, 84, 35, 42, "#ffffff");
+  }
   fitText(ctx, "BLUECLASH", 110, 82, 200, 34);
   ctx.font = '700 16px "Manrope", sans-serif';
   ctx.fillStyle = "#94ade2";
@@ -218,7 +228,8 @@ export default function Ticket() {
           <div className="ticket-main">
             <div className="ticket-topline">
               <span className="ticket-brand">
-                <span>B</span> BLUE<span>CLASH</span>
+                <img src="/brand/logo-192.png" width="38" height="38" alt="" />
+                BLUE<span>CLASH</span>
               </span>
               <span className="ticket-confirmed">
                 <CheckCircle2 size={15} /> CONFIRMED ENTRY

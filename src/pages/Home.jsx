@@ -79,8 +79,8 @@ export default function Home() {
               <span>YOUR</span> <em>GLORY.</em>
             </h1>
             <p>
-              Big plays start here. Find your tournament, join the clash, and
-              show the world what you've got.
+              Find Minecraft, Free Fire and more community tournaments. Join
+              the clash and show the world what you've got.
             </p>
             <div className="hero-buttons">
               <a
