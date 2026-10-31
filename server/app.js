@@ -82,9 +82,17 @@ function readCookie(req) {
   return /^[a-f0-9]{64}$/.test(token) ? token : "";
 }
 
-function sessionCookie(req, token, maxAge = SESSION_SECONDS) {
-  const secure = process.env.COOKIE_SECURE === "true" || req.secure;
-  return `blueclash_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
+function sessionCookie(
+  req,
+  token,
+  maxAge = SESSION_SECONDS,
+  allowEmbed = false,
+) {
+  const secure =
+    allowEmbed || process.env.COOKIE_SECURE === "true" || req.secure;
+  // Embedded previews need a cross-site cookie; partition it to the top-level site.
+  const sameSite = allowEmbed ? "None" : "Lax";
+  return `blueclash_session=${token}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${maxAge}${secure ? "; Secure" : ""}${allowEmbed ? "; Partitioned" : ""}`;
 }
 
 function settings(db) {
@@ -328,7 +336,10 @@ export function createApp(options = {}) {
       userId,
       new Date(Date.now() + SESSION_SECONDS * 1000).toISOString(),
     );
-    res.setHeader("Set-Cookie", sessionCookie(req, token));
+    res.setHeader(
+      "Set-Cookie",
+      sessionCookie(req, token, SESSION_SECONDS, allowEmbed),
+    );
   }
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -367,16 +378,14 @@ export function createApp(options = {}) {
       throw error;
     }
     startSession(req, res, Number(result.lastInsertRowid));
-    res
-      .status(201)
-      .json({
-        user: {
-          id: Number(result.lastInsertRowid),
-          name,
-          email,
-          isAdmin: false,
-        },
-      });
+    res.status(201).json({
+      user: {
+        id: Number(result.lastInsertRowid),
+        name,
+        email,
+        isAdmin: false,
+      },
+    });
   });
 
   app.post("/api/auth/login", authLimiter, async (req, res) => {
@@ -401,7 +410,7 @@ export function createApp(options = {}) {
       db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(
         sha256(req.sessionToken),
       );
-    res.setHeader("Set-Cookie", sessionCookie(req, "", 0));
+    res.setHeader("Set-Cookie", sessionCookie(req, "", 0, allowEmbed));
     res.json({ ok: true });
   });
 
@@ -719,14 +728,12 @@ export function createApp(options = {}) {
         now,
         now,
       );
-    res
-      .status(201)
-      .json({
-        tournament: tournamentDto(
-          tournamentById(db, Number(result.lastInsertRowid)),
-          settings(db).paymentConfigured,
-        ),
-      });
+    res.status(201).json({
+      tournament: tournamentDto(
+        tournamentById(db, Number(result.lastInsertRowid)),
+        settings(db).paymentConfigured,
+      ),
+    });
   });
 
   app.put("/api/admin/tournaments/:id", requireAdmin, (req, res) => {
@@ -897,28 +904,24 @@ export function createApp(options = {}) {
   }
   app.use((error, _req, res, _next) => {
     if (error instanceof multer.MulterError)
-      return res
-        .status(400)
-        .json({
-          error:
-            error.code === "LIMIT_FILE_SIZE"
-              ? "Screenshot must be 5 MB or smaller."
-              : "Invalid screenshot upload.",
-        });
+      return res.status(400).json({
+        error:
+          error.code === "LIMIT_FILE_SIZE"
+            ? "Screenshot must be 5 MB or smaller."
+            : "Invalid screenshot upload.",
+      });
     if (error.type === "entity.too.large")
       return res.status(413).json({ error: "Request is too large." });
     if (error instanceof SyntaxError && error.status === 400)
       return res.status(400).json({ error: "Invalid request body." });
     const status = error.status || 500;
     if (status >= 500) console.error(error);
-    res
-      .status(status)
-      .json({
-        error:
-          status >= 500
-            ? "Something went wrong. Please try again."
-            : error.message,
-      });
+    res.status(status).json({
+      error:
+        status >= 500
+          ? "Something went wrong. Please try again."
+          : error.message,
+    });
   });
   return app;
 }

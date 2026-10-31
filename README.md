@@ -95,7 +95,7 @@ npm run build
 npm start            # http://localhost:8989
 ```
 
-For development, `npm run dev` runs Vite on port 5173 and proxies `/api` to the API server on port 3001. `DATA_DIR` can be set to choose a different database/upload directory; it defaults to `./data`. The app blocks cross-origin embedding by default; set `BLUECLASH_ALLOW_EMBED=true` only for a trusted embedded preview, not a public payment deployment. Run the integration tests with `npm test`. The built-in SQLite module may emit an experimental warning on Node 22.
+For development, `npm run dev` runs Vite on port 5173 and proxies `/api` to the API server on port 3001. `DATA_DIR` can be set to choose a different database/upload directory; it defaults to `./data`. The app blocks cross-origin embedding by default; set `BLUECLASH_ALLOW_EMBED=true` only for a trusted HTTPS embedded preview, not a public payment deployment. This also enables a Secure, partitioned cross-site session cookie for that preview. Run the integration tests with `npm test`. The built-in SQLite module may emit an experimental warning on Node 22.
 
 The default installation does not include public user password recovery or email delivery. An organizer can reset an administrator password via the terminal command above; player account recovery should be arranged before operating a public service.
 

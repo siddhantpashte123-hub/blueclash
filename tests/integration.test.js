@@ -560,4 +560,23 @@ test("trusted preview can opt into embedding without weakening production defaul
     response.headers.get("content-security-policy"),
     /frame-ancestors/,
   );
+  const register = await fetch(
+    `http://127.0.0.1:${server.address().port}/api/auth/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "BlueClash",
+      },
+      body: JSON.stringify({
+        name: "Preview Player",
+        email: "preview@example.com",
+        password: "preview-password-123",
+      }),
+    },
+  );
+  assert.equal(register.status, 201);
+  assert.match(register.headers.get("set-cookie"), /SameSite=None/);
+  assert.match(register.headers.get("set-cookie"), /Secure/);
+  assert.match(register.headers.get("set-cookie"), /Partitioned/);
 });
