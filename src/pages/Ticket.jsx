@@ -36,7 +36,7 @@ function fitText(ctx, value, x, y, maxWidth, size, color = "#f1f5ff") {
   ctx.fillText(shown === value ? shown : `${shown}…`, x, y);
 }
 
-async function downloadTicket(ticket, qrCode) {
+async function downloadTicket(ticket, qrCode, branding) {
   await document.fonts.ready;
   const canvas = document.createElement("canvas");
   canvas.width = 1200;
@@ -56,16 +56,24 @@ async function downloadTicket(ticket, qrCode) {
   const logoLoaded = await new Promise((resolve) => {
     logo.onload = () => resolve(true);
     logo.onerror = () => resolve(false);
-    logo.src = "/brand/logo-192.png";
+    logo.src = branding.logoUrl;
   });
   if (logoLoaded) ctx.drawImage(logo, 43, 40, 60, 60);
   else {
     // The ticket is still downloadable if the logo asset is unavailable.
     ctx.fillStyle = "#346aff";
     ctx.fillRect(48, 46, 48, 48);
-    fitText(ctx, "B", 59, 84, 35, 42, "#ffffff");
+    fitText(
+      ctx,
+      Array.from(branding.name)[0] || "T",
+      59,
+      84,
+      35,
+      42,
+      "#ffffff",
+    );
   }
-  fitText(ctx, "BLUECLASH", 110, 82, 200, 34);
+  fitText(ctx, branding.name.toUpperCase(), 110, 82, 600, 34);
   ctx.font = '700 16px "Manrope", sans-serif';
   ctx.fillStyle = "#94ade2";
   ctx.fillText("OFFICIAL TOURNAMENT TICKET", 49, 151);
@@ -119,7 +127,10 @@ async function downloadTicket(ticket, qrCode) {
   ctx.fillText("This QR is not for payment.", 895, 478);
   const link = document.createElement("a");
   link.href = canvas.toDataURL("image/png");
-  link.download = `BlueClash-${ticket.ticketCode}.png`;
+  const safeName =
+    branding.name.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") ||
+    "Tournament";
+  link.download = `${safeName}-${ticket.ticketCode}.png`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -127,7 +138,7 @@ async function downloadTicket(ticket, qrCode) {
 
 export default function Ticket() {
   const { id } = useParams();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, branding } = useAuth();
   const [ticket, setTicket] = useState(null);
   const [qr, setQr] = useState({ ticketCode: "", data: "" });
   const qrCode = qr.ticketCode === ticket?.ticketCode ? qr.data : "";
@@ -228,8 +239,8 @@ export default function Ticket() {
           <div className="ticket-main">
             <div className="ticket-topline">
               <span className="ticket-brand">
-                <img src="/brand/logo-192.png" width="38" height="38" alt="" />
-                BLUE<span>CLASH</span>
+                <img src={branding.logoUrl} width="38" height="38" alt="" />
+                <span title={branding.name}>{branding.name}</span>
               </span>
               <span className="ticket-confirmed">
                 <CheckCircle2 size={15} /> CONFIRMED ENTRY
@@ -276,7 +287,7 @@ export default function Ticket() {
               <span>
                 <ShieldCheck size={15} /> ENTRY CONFIRMED
               </span>
-              <span>BLUECLASH / PLAYER PASS</span>
+              <span>{branding.name} / PLAYER PASS</span>
             </div>
           </div>
           <div className="ticket-stub">
@@ -305,7 +316,7 @@ export default function Ticket() {
             onClick={async () => {
               setDownloadError("");
               try {
-                await downloadTicket(ticket, qrCode);
+                await downloadTicket(ticket, qrCode, branding);
               } catch (err) {
                 setDownloadError(err.message);
               }

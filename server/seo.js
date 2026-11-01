@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { DEFAULT_BRANDING } from "../src/brand.js";
 import {
   homeSeo,
   privatePageLabel,
@@ -22,18 +23,18 @@ function escapeText(value) {
     .replace(/'/g, "&#39;");
 }
 
-export function websiteStructuredData(siteUrl) {
-  // Escape '<' even though SITE_URL is validated, so this is always safe in a
-  // script element. The exact bytes are also hashed for the Content-Security-Policy.
+export function websiteStructuredData(siteUrl, brand = DEFAULT_BRANDING) {
+  // Prevent a brand name from ending the script element. The exact JSON bytes
+  // are hashed per request for CSP; no unsafe-inline permission is needed.
   return JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [
-      { "@type": "WebSite", name: "BlueClash", url: `${siteUrl}/` },
+      { "@type": "WebSite", name: brand.name, url: `${siteUrl}/` },
       {
         "@type": "Organization",
-        name: "BlueClash",
+        name: brand.name,
         url: `${siteUrl}/`,
-        logo: `${siteUrl}/brand/logo-512.png`,
+        logo: `${siteUrl}${brand.largeLogoUrl}`,
       },
     ],
   }).replace(/</g, "\\u003c");
@@ -43,19 +44,30 @@ export function structuredDataCspHash(json) {
   return `'sha256-${crypto.createHash("sha256").update(json).digest("base64")}'`;
 }
 
-function renderHead(page, siteUrl, structuredData) {
+function renderHead(page, siteUrl, brand, structuredData) {
   const meta = (attribute, key, value) =>
     `<meta ${attribute}="${escapeText(key)}" content="${escapeText(value)}" />`;
   return [
     `<title>${escapeText(page.title)}</title>`,
+    `<link rel="icon" type="image/png" sizes="48x48" href="${escapeText(brand.faviconUrl)}" />`,
+    `<link rel="apple-touch-icon" href="${escapeText(brand.appleIconUrl)}" />`,
     meta("name", "description", page.description),
     meta("name", "robots", page.robots),
     meta("name", "blueclash:site-url", siteUrl),
+    meta("name", "blueclash:brand-name", brand.name),
+    meta("name", "blueclash:brand-revision", brand.revision),
+    meta("name", "blueclash:brand-logo", brand.logoUrl),
+    meta("name", "blueclash:brand-logo-large", brand.largeLogoUrl),
+    meta("name", "blueclash:brand-favicon", brand.faviconUrl),
+    meta("name", "blueclash:brand-apple-icon", brand.appleIconUrl),
+    meta("name", "blueclash:brand-social-image", brand.socialImageUrl),
+    meta("name", "blueclash:brand-custom-logo", String(brand.customLogo)),
+    meta("name", "blueclash:brand-assets-missing", String(brand.assetsMissing)),
     page.canonical
       ? `<link rel="canonical" href="${escapeText(page.canonical)}" />`
       : "",
     meta("property", "og:type", "website"),
-    meta("property", "og:site_name", "BlueClash"),
+    meta("property", "og:site_name", brand.name),
     meta("property", "og:title", page.title),
     meta("property", "og:description", page.description),
     meta("property", "og:url", page.url),
@@ -77,7 +89,7 @@ function renderHead(page, siteUrl, structuredData) {
     .join("\n    ");
 }
 
-function homeBody(events) {
+function homeBody(events, brand) {
   const list = events.length
     ? `<ul>${events
         .map(
@@ -87,21 +99,21 @@ function homeBody(events) {
         .join("")}</ul>`
     : "<p>Check back for upcoming community tournaments.</p>";
   return `<main class="seo-fallback">
-    <a href="/"><img src="/brand/logo-192.png" width="64" height="64" alt="BlueClash" /></a>
-    <h1>BlueClash gaming tournaments</h1>
+    <a href="/"><img src="${escapeText(brand.logoUrl)}" width="64" height="64" alt="${escapeText(brand.name)}" /></a>
+    <h1>${escapeText(brand.name)} gaming tournaments</h1>
     <p>Discover community tournaments for Minecraft, Free Fire and more. Browse events and their rules before signing in to enter.</p>
     <section id="tournaments"><h2>Explore tournaments</h2>${list}</section>
     <p>JavaScript is required to sign in and enter a tournament.</p>
   </main>`;
 }
 
-function tournamentBody(event) {
+function tournamentBody(event, brand) {
   const date = new Date(event.starts_at);
   const time = Number.isNaN(date.getTime())
     ? "To be announced"
     : `<time datetime="${escapeText(date.toISOString())}">${escapeText(date.toUTCString())}</time>`;
   return `<main class="seo-fallback">
-    <p><a href="/">BlueClash</a> / <a href="/#tournaments">Tournaments</a></p>
+    <p><a href="/">${escapeText(brand.name)}</a> / <a href="/#tournaments">Tournaments</a></p>
     <h1>${escapeText(event.title)}</h1>
     <p>${escapeText(event.tagline)}</p>
     <h2>About this tournament</h2>
@@ -113,10 +125,10 @@ function tournamentBody(event) {
   </main>`;
 }
 
-function privateBody() {
-  return `<main class="seo-fallback"><h1>BlueClash</h1>
+function privateBody(brand) {
+  return `<main class="seo-fallback"><h1>${escapeText(brand.name)}</h1>
     <p>JavaScript is required to use this page.</p>
-    <p><a href="/">Browse BlueClash tournaments</a></p></main>`;
+    <p><a href="/">Browse ${escapeText(brand.name)} tournaments</a></p></main>`;
 }
 
 function replaceSection(template, start, end, value) {
@@ -138,7 +150,6 @@ export function assertSeoTemplate(template) {
 }
 
 export function createSeo(db, siteUrl) {
-  const structuredData = websiteStructuredData(siteUrl);
   const publicEvent =
     db.prepare(`SELECT id, title, game, tagline, description, starts_at, mode
     FROM tournaments WHERE id = ? AND is_demo = 0 AND status IN ('published', 'completed')`);
@@ -151,14 +162,14 @@ export function createSeo(db, siteUrl) {
   const sitemapEvents = db.prepare(`SELECT id, updated_at FROM tournaments
     WHERE is_demo = 0 AND status IN ('published', 'completed') ORDER BY id ASC LIMIT 49999`);
 
-  function render(pathname, template) {
+  function render(pathname, template, brand = DEFAULT_BRANDING) {
     let page,
       body,
       status = 200,
       includeSchema = false;
     if (pathname === "/") {
-      page = homeSeo(siteUrl);
-      body = homeBody(homeEvents.all());
+      page = homeSeo(siteUrl, brand);
+      body = homeBody(homeEvents.all(), brand);
       includeSchema = true;
     } else {
       const match = /^\/tournaments\/([^/]+)\/?$/i.exec(pathname);
@@ -168,22 +179,23 @@ export function createSeo(db, siteUrl) {
           /^\d+$/.test(match[1]) && Number.isSafeInteger(id) && id > 0;
         const event = valid ? publicEvent.get(id) : null;
         if (event) {
-          page = tournamentSeo(siteUrl, event);
-          body = tournamentBody(event);
+          page = tournamentSeo(siteUrl, event, brand);
+          body = tournamentBody(event, brand);
         } else {
           // A sample remains browseable but is never advertised to crawlers.
           const sample = valid && publicDemo.get(id);
           page = privateSeo(
             siteUrl,
             sample ? "Sample tournament" : "Tournament not found",
+            brand,
           );
-          body = privateBody();
+          body = privateBody(brand);
           if (!sample) status = 404;
         }
       } else {
         const label = privatePageLabel(pathname);
-        page = privateSeo(siteUrl, label || "Page not found");
-        body = privateBody();
+        page = privateSeo(siteUrl, label || "Page not found", brand);
+        body = privateBody(brand);
         if (!label) status = 404;
       }
     }
@@ -191,7 +203,12 @@ export function createSeo(db, siteUrl) {
       template,
       HEAD_START,
       HEAD_END,
-      renderHead(page, siteUrl, includeSchema ? structuredData : null),
+      renderHead(
+        page,
+        siteUrl,
+        brand,
+        includeSchema ? websiteStructuredData(siteUrl, brand) : null,
+      ),
     );
     html = replaceSection(html, BODY_START, BODY_END, body);
     return { html, page, status };
@@ -215,5 +232,5 @@ export function createSeo(db, siteUrl) {
     return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
   }
 
-  return { render, robots, sitemap, structuredData };
+  return { render, robots, sitemap };
 }

@@ -1,3 +1,5 @@
+import { DEFAULT_BRANDING } from "./brand.js";
+
 // This origin is configurable on the server with SITE_URL. Never construct
 // canonical/share URLs from an incoming Host or X-Forwarded-Host header.
 export const DEFAULT_SITE_URL = "https://www.blueclash.bond";
@@ -47,7 +49,11 @@ function shorten(value, length) {
     .trimEnd()}…`;
 }
 
-function common(siteUrl, title, description, url, indexable) {
+function descriptionFor(brand) {
+  return `Discover Minecraft, Free Fire and more gaming tournaments on ${brand.name}. Browse events, view the rules and find your next community clash.`;
+}
+
+function common(siteUrl, title, description, url, indexable, brand) {
   return {
     title,
     description,
@@ -56,20 +62,28 @@ function common(siteUrl, title, description, url, indexable) {
     robots: indexable
       ? "index, follow, max-image-preview:large"
       : "noindex, nofollow",
-    image: `${siteUrl}${SOCIAL_IMAGE_PATH}`,
-    imageAlt: SOCIAL_IMAGE_ALT,
+    image: `${siteUrl}${brand.socialImageUrl}`,
+    imageAlt: `${brand.name} gaming arena: tournaments for Minecraft, Free Fire and more`,
+    siteName: brand.name,
   };
 }
 
-export function homeSeo(siteUrl) {
-  return common(siteUrl, HOME_TITLE, HOME_DESCRIPTION, `${siteUrl}/`, true);
+export function homeSeo(siteUrl, brand = DEFAULT_BRANDING) {
+  return common(
+    siteUrl,
+    `${brand.name} | Minecraft & Free Fire Tournaments`,
+    descriptionFor(brand),
+    `${siteUrl}/`,
+    true,
+    brand,
+  );
 }
 
-export function tournamentSeo(siteUrl, tournament) {
-  const suffix = ` | ${shorten(tournament.game, 20)} Tournament | BlueClash`;
+export function tournamentSeo(siteUrl, tournament, brand = DEFAULT_BRANDING) {
+  const suffix = ` | ${shorten(tournament.game, 20)} Tournament | ${brand.name}`;
   const title = `${shorten(tournament.title, Math.max(18, 70 - Array.from(suffix).length))}${suffix}`;
   const description = shorten(
-    `${tournament.game} tournament on BlueClash. ${tournament.tagline} ${tournament.description}`,
+    `${tournament.game} tournament on ${brand.name}. ${tournament.tagline} ${tournament.description}`,
     160,
   );
   return common(
@@ -78,12 +92,21 @@ export function tournamentSeo(siteUrl, tournament) {
     description,
     `${siteUrl}/tournaments/${encodeURIComponent(String(tournament.id))}`,
     true,
+    brand,
   );
 }
 
-export function privateSeo(siteUrl, label = "BlueClash") {
-  const title = label === "BlueClash" ? label : `${label} | BlueClash`;
-  return common(siteUrl, title, HOME_DESCRIPTION, `${siteUrl}/`, false);
+export function privateSeo(siteUrl, label, brand = DEFAULT_BRANDING) {
+  const title =
+    !label || label === brand.name ? brand.name : `${label} | ${brand.name}`;
+  return common(
+    siteUrl,
+    title,
+    descriptionFor(brand),
+    `${siteUrl}/`,
+    false,
+    brand,
+  );
 }
 
 export function privatePageLabel(pathname) {

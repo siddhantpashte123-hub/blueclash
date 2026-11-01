@@ -9,7 +9,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDatabase, transaction, getSetting, setSetting } from "./db.js";
 import { normalizeSiteUrl } from "../src/seo.js";
-import { assertSeoTemplate, createSeo, structuredDataCspHash } from "./seo.js";
+import { BRAND_LOGO_MAX_BYTES } from "../src/brand.js";
+import { BRAND_ASSET_NAMES, getBranding, saveBranding } from "./branding.js";
+import {
+  assertSeoTemplate,
+  createSeo,
+  structuredDataCspHash,
+  websiteStructuredData,
+} from "./seo.js";
 import {
   hashPassword,
   verifyPassword,
@@ -391,6 +398,7 @@ export function createApp(options = {}) {
   const db = openDatabase(dataDir);
   const seo = createSeo(db, siteUrl);
   const uploadDir = path.join(dataDir, "uploads");
+  const brandingDir = path.join(dataDir, "branding");
   cleanupQueuedProofs(db, uploadDir);
   const app = express();
   app.locals.db = db;
@@ -398,6 +406,12 @@ export function createApp(options = {}) {
   if (process.env.TRUST_PROXY === "true") app.set("trust proxy", 1);
   const allowEmbed =
     options.allowEmbed ?? process.env.BLUECLASH_ALLOW_EMBED === "true";
+  // One snapshot per request makes the CSP hash match the HTML even if another
+  // admin saves new branding while an asynchronous static-file lookup runs.
+  app.use((_req, res, next) => {
+    res.locals.branding = getBranding(db, brandingDir);
+    next();
+  });
   app.use(
     helmet({
       // Keep clickjacking protection in production; opt in only for a trusted embedded preview.
@@ -406,7 +420,13 @@ export function createApp(options = {}) {
           "upgrade-insecure-requests": null,
           // Permit only the exact, generated homepage JSON-LD; keep executable
           // inline scripts blocked rather than weakening the site's CSP.
-          "script-src": ["'self'", structuredDataCspHash(seo.structuredData)],
+          "script-src": [
+            "'self'",
+            (_req, res) =>
+              structuredDataCspHash(
+                websiteStructuredData(siteUrl, res.locals.branding),
+              ),
+          ],
           ...(allowEmbed ? { "frame-ancestors": null } : {}),
         },
       },
@@ -462,6 +482,14 @@ export function createApp(options = {}) {
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 6 },
   });
+  const brandUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: BRAND_LOGO_MAX_BYTES, files: 1, fields: 3 },
+  });
+  const parseBranding = (req, res, next) =>
+    req.is("multipart/form-data")
+      ? brandUpload.single("logo")(req, res, next)
+      : next();
   const parseSettings = (req, res, next) =>
     req.is("multipart/form-data")
       ? settingsUpload.single("paymentQr")(req, res, next)
@@ -506,8 +534,27 @@ export function createApp(options = {}) {
     res.json({
       user: publicUser(req.user),
       supportEmail: settings(db, uploadDir).supportEmail,
+      branding: res.locals.branding,
     }),
   );
+
+  // This route can serve only the generated public derivatives, never the
+  // original upload, payment QR, screenshots or other DATA_DIR contents.
+  app.get("/api/brand-assets/:id/:file", (req, res, next) => {
+    const { id, file } = req.params;
+    if (!/^[a-f0-9]{32}$/.test(id) || !BRAND_ASSET_NAMES.includes(file)) {
+      throw new ApiError(404, "Brand image not found.");
+    }
+    const image = path.join(brandingDir, id, file);
+    if (!fs.existsSync(image))
+      throw new ApiError(404, "Brand image not found.");
+    res.set("Cross-Origin-Resource-Policy", "cross-origin");
+    res.removeHeader("X-Robots-Tag");
+    res.set("Cache-Control", "public, max-age=86400, immutable");
+    res.sendFile(image, { dotfiles: "deny" }, (error) => {
+      if (error) next(error);
+    });
+  });
 
   app.post("/api/auth/register", authLimiter, async (req, res) => {
     const name = text(req.body?.name, "Name", 2, 80);
@@ -747,7 +794,7 @@ export function createApp(options = {}) {
           pn: payment.upiName,
           am: (row.amount_paise / 100).toFixed(2),
           cu: "INR",
-          tn: `BlueClash entry ${row.id}`,
+          tn: `${res.locals.branding.name} entry ${row.id}`,
         });
         upiUri = `upi://pay?${params}`;
         qrCode = await QRCode.toDataURL(upiUri, {
@@ -1345,7 +1392,7 @@ export function createApp(options = {}) {
   app.get("/api/admin/tickets/:code", requireAdmin, (req, res) => {
     const code = String(req.params.code || "").toUpperCase();
     if (!/^BC-[A-F0-9]{24}$/.test(code))
-      throw new ApiError(400, "Enter a valid BlueClash ticket code.");
+      throw new ApiError(400, "Enter a valid ticket code.");
     const row = db
       .prepare(
         `${ENTRY_SELECT} WHERE e.ticket_code = ? AND e.status = 'approved'`,
@@ -1358,6 +1405,25 @@ export function createApp(options = {}) {
       );
     res.json({ ticket: { ...entryDto(row), email: row.user_email } });
   });
+
+  app.get("/api/admin/branding", requireAdmin, (_req, res) =>
+    res.json({ branding: res.locals.branding }),
+  );
+  app.put(
+    "/api/admin/branding",
+    requireAdmin,
+    parseBranding,
+    async (req, res) => {
+      const branding = await saveBranding(db, brandingDir, ROOT, {
+        name: req.body?.name,
+        revision: req.body?.revision,
+        removeLogo:
+          req.body?.removeLogo === true || req.body?.removeLogo === "true",
+        logo: req.file?.buffer,
+      });
+      res.json({ branding });
+    },
+  );
 
   app.get("/api/admin/settings", requireAdmin, (_req, res) =>
     res.json({ settings: settings(db, uploadDir) }),
@@ -1454,7 +1520,10 @@ export function createApp(options = {}) {
     res.set("Cache-Control", "no-store").type("text/plain").send(seo.robots());
   });
   app.get("/sitemap.xml", (_req, res) => {
-    res.set("Cache-Control", "no-store").type("application/xml").send(seo.sitemap());
+    res
+      .set("Cache-Control", "no-store")
+      .type("application/xml")
+      .send(seo.sitemap());
   });
 
   const distDir = path.resolve(options.distDir || path.join(ROOT, "dist"));
@@ -1478,7 +1547,7 @@ export function createApp(options = {}) {
     app.use((req, res, next) => {
       if (!["GET", "HEAD"].includes(req.method) || path.extname(req.path))
         return next();
-      const result = seo.render(req.path, template);
+      const result = seo.render(req.path, template, res.locals.branding);
       let { status } = result;
       // An admin can still reload a draft's SPA page. The HTML itself stays
       // generic and noindex; details come only from the authorized API.
@@ -1502,7 +1571,11 @@ export function createApp(options = {}) {
   app.use((error, req, res, _next) => {
     if (error instanceof multer.MulterError) {
       const kind =
-        req.path === "/api/admin/settings" ? "QR image" : "Screenshot";
+        req.path === "/api/admin/settings"
+          ? "QR image"
+          : req.path === "/api/admin/branding"
+            ? "Logo"
+            : "Screenshot";
       return res.status(400).json({
         error:
           error.code === "LIMIT_FILE_SIZE"

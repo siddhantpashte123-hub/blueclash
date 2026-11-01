@@ -11,6 +11,7 @@ import {
   Eye,
   LayoutDashboard,
   MessageCircle,
+  Palette,
   Plus,
   QrCode,
   Save,
@@ -32,6 +33,7 @@ import {
   useAuth,
 } from "../shared.jsx";
 import SettingsPanel from "../components/SettingsPanel.jsx";
+import BrandingPanel from "../components/BrandingPanel.jsx";
 import VerifyTicket from "../components/VerifyTicket.jsx";
 import DeleteTournamentModal from "../components/DeleteTournamentModal.jsx";
 import AdminChats from "../components/AdminChats.jsx";
@@ -543,7 +545,7 @@ function ReviewModal({ entry, onClose, onReviewed, onChat }) {
 }
 
 export default function Admin() {
-  const { user, loading: authLoading, refresh } = useAuth();
+  const { user, loading: authLoading, refresh, branding } = useAuth();
   const location = useLocation();
   const scannedTicket =
     new URLSearchParams(location.search).get("ticket") || "";
@@ -685,6 +687,7 @@ export default function Admin() {
       icon: <ClipboardList size={17} />,
     },
     { id: "verify", label: "Verify ticket", icon: <QrCode size={17} /> },
+    { id: "branding", label: "Website branding", icon: <Palette size={17} /> },
     { id: "settings", label: "Payment settings", icon: <Settings size={17} /> },
   ];
   const filteredEntries = entries.filter(
@@ -703,7 +706,10 @@ export default function Admin() {
                 <ShieldCheck size={20} />
               </span>
               <div>
-                BLUECLASH<strong>CONTROL ROOM</strong>
+                <span className="admin-brand-name" title={branding.name}>
+                  {branding.name}
+                </span>
+                <strong>CONTROL ROOM</strong>
               </div>
             </div>
             <span className="admin-nav-label">WORKSPACE</span>
@@ -1004,6 +1010,7 @@ export default function Admin() {
                 {tab === "verify" && (
                   <VerifyTicket initialCode={scannedTicket} />
                 )}
+                {tab === "branding" && <BrandingPanel onSaved={done} />}
                 {tab === "settings" && paymentSettings && (
                   <SettingsPanel initial={paymentSettings} onSaved={done} />
                 )}

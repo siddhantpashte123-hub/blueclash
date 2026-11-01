@@ -6,9 +6,10 @@ import {
   UsersRound,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { formatDate, money } from "../shared.jsx";
+import { formatDate, money, useAuth } from "../shared.jsx";
 
 export default function TournamentCard({ tournament: t }) {
+  const { branding } = useAuth();
   return (
     <article className="event-card">
       <Link
@@ -30,7 +31,7 @@ export default function TournamentCard({ tournament: t }) {
           )}
         </div>
         <div className="image-bottom-label">
-          <span>BLUECLASH / TOURNAMENTS</span>
+          <span>{branding.name} / TOURNAMENTS</span>
           <ArrowUpRight size={18} />
         </div>
       </Link>

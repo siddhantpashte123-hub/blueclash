@@ -4,7 +4,7 @@ A self-hosted tournament platform for Minecraft, Free Fire, and other games. Pla
 
 ## One-command VPS manager
 
-On a **Debian or Ubuntu VPS running systemd** (x86-64 or ARM64), run this single command:
+On a **Debian or Ubuntu VPS running systemd** (x86-64 or ARM64, glibc 2.28 or newer), run this single command:
 
 ```bash
 curl -fsSL 'https://github.com/siddhantpashte123-hub/blueclash/raw/refs/heads/main/install.sh' -o /tmp/blueclash-install.sh && bash /tmp/blueclash-install.sh
@@ -72,9 +72,17 @@ Apply the change with `sudo systemctl restart blueclash`. `TRUST_PROXY` must onl
 
 BlueClash serves page titles, descriptions, Open Graph/Twitter tags, a 1200 × 630 branded preview image, a favicon, `robots.txt`, and a dynamic `sitemap.xml`. Public, non-sample published/completed tournaments get their own crawlable descriptions and canonical URLs; drafts, sample events, sign-in, entries, tickets, chat, and admin pages are marked `noindex`. This is a search-engine instruction, **not** an access-control mechanism; private APIs continue to require authorization. The sitemap includes the homepage plus up to 49,999 real public tournaments.
 
-The default canonical origin is **`https://www.blueclash.bond`**. If your public domain is different, set `SITE_URL` as shown above (for example, `https://arena.example.com`), then restart the service. It must be a complete `http://` or `https://` origin with no path, credentials, query or fragment. Use HTTPS for production and make sure the public domain, `/brand/social-card.jpg`, `/robots.txt`, and `/sitemap.xml` are reachable without a login or bot-blocking challenge. Canonical and image URLs are generated from this trusted setting, not from request headers. Configure your reverse proxy or DNS provider to redirect alternate hosts and HTTP to the one HTTPS origin; the app does not configure these redirects or TLS for you.
+The default canonical origin is **`https://www.blueclash.bond`**. If your public domain is different, set `SITE_URL` as shown above (for example, `https://arena.example.com`), then restart the service. It must be a complete `http://` or `https://` origin with no path, credentials, query or fragment. Use HTTPS for production and make sure the public domain, the `og:image` URL in the page source (under `/brand/` by default or `/api/brand-assets/` for customized branding), `/robots.txt`, and `/sitemap.xml` are reachable without a login or bot-blocking challenge. Canonical and image URLs are generated from this trusted setting, not from request headers. Configure your reverse proxy or DNS provider to redirect alternate hosts and HTTP to the one HTTPS origin; the app does not configure these redirects or TLS for you.
 
 After deploying, verify your domain in Google Search Console and submit `https://YOUR-DOMAIN/sitemap.xml`. Social services can cache an older preview, so use their preview/debugging tools where available or wait for a refresh. Search engines decide when to crawl, whether to use the metadata and how to rank or display a page; updates do not guarantee a particular result or timeline.
+
+### Change the website name and logo
+
+Sign in as an administrator and open **Admin → Website branding**. Enter a website name (up to 40 characters), upload a PNG, JPEG or WebP logo (up to 5 MB, non-animated, 16–4096 pixels per side), and check the live preview before selecting **Save branding**. A square image is recommended. You can replace the logo, select the default logo, discard unsaved edits, or choose **Restore defaults** and save to return to BlueClash. Concurrent edits by another admin require reloading the latest version before saving.
+
+The saved name and logo appear throughout the website, on tickets, in page titles, the favicon and generated social previews. Existing `BC-` ticket codes and payment settings do not change. An already-open page may need a refresh; search engines and social services can retain an older preview in their caches. The submitted logo is re-encoded and public derivative images are served separately from private payment screenshots/QRs; do not upload confidential images as logos.
+
+The name is stored in the database and the generated branding images are stored under `/var/lib/blueclash/branding` (or `$DATA_DIR/branding`). They survive service restarts and normal updates as long as the entire data directory is preserved and backed up. If a saved image is missing, the admin panel shows a warning and the default logo is used until it is uploaded again or reset.
 
 ## How registration and payments work
 
@@ -104,10 +112,10 @@ If a screenshot cannot be removed, the admin will see a warning. The app keeps a
 
 - Application files: `/opt/blueclash`
 - Dedicated Node.js runtime: `/opt/blueclash-node`
-- SQLite database and private screenshots: `/var/lib/blueclash`
+- SQLite database, private screenshots and saved branding assets: `/var/lib/blueclash`
 - Service: `blueclash.service`
 
-Choose **1** in `sudo blueclash` to update from GitHub `main` while retaining the database and uploads. If your manager was installed from an older release, first re-run the one-command installer above and choose **1** once; older managers were pinned to an old branch and will not fetch this release by themselves. Thereafter `sudo blueclash` uses the current manager and updates from `main` by default. Choose **2** to uninstall; data is kept unless you explicitly type `DELETE` when prompted. There is no automatic backup. To make a consistent backup, stop the service, archive the entire data directory (including any SQLite WAL files and uploads), and restart it:
+Choose **1** in `sudo blueclash` to update from GitHub `main` while retaining the database, uploads and branding. If your manager was installed from an older release, first re-run the one-command installer above and choose **1** once; older managers were pinned to an old branch and will not fetch this release by themselves. Thereafter `sudo blueclash` uses the current manager and updates from `main` by default. Choose **2** to uninstall; data is kept unless you explicitly type `DELETE` when prompted. There is no automatic backup. To make a consistent backup, stop the service, archive the entire data directory (including any SQLite WAL files, uploads and branding), and restart it:
 
 ```bash
 sudo systemctl stop blueclash
@@ -138,6 +146,6 @@ The default installation does not include public user password recovery or email
 
 ## Tech
 
-React, Vite, Express, and SQLite. Passwords are salted and hashed with scrypt, sessions use HTTP-only same-site cookies, admin APIs enforce the admin role, and payment screenshots are stored outside the public web root. Payment QR codes are uploaded by the organizer or generated locally from a UPI ID; no payment processor is integrated. Ticket verification QR codes are generated locally and require an admin login.
+React, Vite, Express, SQLite, and Sharp for sanitized branding images. Passwords are salted and hashed with scrypt, sessions use HTTP-only same-site cookies, admin APIs enforce the admin role, and payment screenshots are stored outside the public web root. Payment QR codes are uploaded by the organizer or generated locally from a UPI ID; no payment processor is integrated. Ticket verification QR codes are generated locally and require an admin login. The Manrope and Noto Sans Devanagari fonts bundled for server-rendered previews are licensed under the SIL Open Font License; see the license files in `server/assets/`.
 
 BlueClash is an independent community platform and is not affiliated with Minecraft, Free Fire, or their publishers.
