@@ -22,7 +22,7 @@ function safeDestination(value) {
 export default function Auth() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const { setUser, branding } = useAuth();
   const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -84,7 +84,7 @@ export default function Auth() {
                 </p>
               </div>
               <span className="auth-art-bottom">
-                BLUECLASH <ArrowRight size={16} /> BUILT FOR PLAYERS
+                {branding.name} <ArrowRight size={16} /> BUILT FOR PLAYERS
               </span>
             </div>
           </div>
@@ -194,7 +194,7 @@ export default function Auth() {
                 {busy
                   ? "PLEASE WAIT..."
                   : mode === "login"
-                    ? "SIGN IN TO BLUECLASH"
+                    ? `SIGN IN TO ${branding.name}`
                     : "CREATE MY ACCOUNT"}{" "}
                 <ArrowUpRight size={17} />
               </button>

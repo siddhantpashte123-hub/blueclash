@@ -16,17 +16,27 @@ import {
 import { useAuth } from "../shared.jsx";
 
 export function Brand({ footer = false }) {
+  const { branding } = useAuth();
   return (
     <Link
       className={`brand ${footer ? "brand-footer" : ""}`}
       to="/"
-      aria-label="BlueClash home"
+      aria-label={`${branding.name} home`}
+      title={branding.name}
     >
       <span className="brand-mark" aria-hidden="true">
-        <img src="/brand/logo-192.png" width="48" height="48" alt="" />
+        <img src={branding.logoUrl} width="48" height="48" alt="" />
       </span>
       <span className="brand-word">
-        BLUE<span>CLASH</span>
+        <span className="brand-name">
+          {branding.name === "BlueClash" ? (
+            <>
+              BLUE<span>CLASH</span>
+            </>
+          ) : (
+            branding.name
+          )}
+        </span>
         <small>THE GAMING ARENA</small>
       </span>
     </Link>
@@ -70,7 +80,7 @@ export function Header() {
               HOW IT WORKS
             </a>
             <a href="/#about" onClick={() => setMenuOpen(false)}>
-              THE BLUECLASH WAY
+              OUR WAY
             </a>
             {user && (
               <Link to="/my-entries" onClick={() => setMenuOpen(false)}>
@@ -151,7 +161,7 @@ export function Header() {
 }
 
 export function Footer() {
-  const { supportEmail } = useAuth();
+  const { supportEmail, branding } = useAuth();
   return (
     <footer className="site-footer" id="about">
       <div className="container">
@@ -198,15 +208,15 @@ export function Footer() {
         </div>
         <div className="footer-bottom">
           <span>
-            © {new Date().getFullYear()} BLUECLASH. BUILT FOR THE CLASH.
+            © {new Date().getFullYear()} {branding.name}. BUILT FOR THE CLASH.
           </span>
           <span>
             COMMUNITY FIRST <ArrowRight size={12} /> ALWAYS
           </span>
         </div>
         <p className="footer-disclaimer">
-          BlueClash is an independent community platform and is not affiliated
-          with any game publisher.
+          {branding.name} is an independent community platform and is not
+          affiliated with any game publisher.
         </p>
       </div>
     </footer>

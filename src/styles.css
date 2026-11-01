@@ -163,7 +163,15 @@ img {
   line-height: 0.75;
   white-space: nowrap;
 }
-.brand-word > span {
+.brand-word > .brand-name {
+  display: block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #f2f6ff;
+  line-height: 0.95;
+}
+.brand-name > span {
   color: #6d95ff;
 }
 .brand-word small {
@@ -3152,6 +3160,9 @@ img {
   .brand-word {
     font-size: 23px;
   }
+  .brand-word > .brand-name {
+    max-width: min(155px, calc(100vw - 165px));
+  }
   .nav-cta {
     display: none;
   }
@@ -3595,6 +3606,14 @@ img {
 }
 .ticket-brand > span:last-child {
   color: #86a9ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(320px, 40vw);
+}
+.ticket-main-footer span:last-child {
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 .ticket-confirmed {
   display: inline-flex;
@@ -4821,5 +4840,251 @@ img {
   }
   .delete-tournament-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Admin website branding */
+.admin-brand-name {
+  display: block;
+  max-width: 145px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.branding-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(245px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+.branding-form,
+.branding-preview {
+  min-width: 0;
+}
+.branding-form .panel-heading {
+  margin-bottom: 2px;
+}
+.branding-help,
+.branding-logo-options small {
+  display: block;
+  color: #91a4c1;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.6;
+  margin-top: 7px;
+}
+.branding-upload {
+  background: #0d1727;
+  border: 1px solid #30415c;
+  padding: 18px;
+}
+.branding-upload-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #91aff3;
+}
+.branding-upload-title strong {
+  color: #e1ebff;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+}
+.branding-upload-title p {
+  margin: 7px 0 0;
+  color: #94a6c1;
+  font-size: 11px;
+}
+.branding-logo-control {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 18px;
+}
+.branding-logo-image {
+  width: 112px;
+  height: 112px;
+  padding: 8px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: #172440;
+  border: 1px solid #3a4f76;
+}
+.branding-logo-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.branding-logo-options {
+  min-width: 0;
+}
+.branding-logo-options .qr-filename {
+  display: block;
+  margin-top: 8px;
+}
+.branding-text-button {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 3px 0;
+  background: none;
+  border: 0;
+  color: #a7c1ff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-align: left;
+}
+.branding-text-button:hover {
+  color: #fff;
+}
+.branding-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.branding-actions .branding-text-button {
+  margin: 0 4px;
+}
+.branding-footnote {
+  color: #91a4c1;
+  font-size: 10px;
+  line-height: 1.7;
+  margin: 0;
+}
+.branding-conflict {
+  flex-wrap: wrap;
+}
+.branding-conflict button {
+  color: #fff;
+  background: #443a21;
+  border: 1px solid #987a35;
+  padding: 9px 12px;
+  font-size: 9px;
+  font-weight: 800;
+}
+.branding-preview {
+  background: #101826;
+  border: 1px solid #283b58;
+  padding: 22px;
+}
+.branding-preview > p {
+  margin: 10px 0 16px;
+  color: #a3b3cb;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.branding-preview-window {
+  border: 1px solid #34496b;
+  overflow: hidden;
+  background: #0a1120;
+}
+.branding-preview-browser {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 29px;
+  padding: 0 10px;
+  background: #18263c;
+}
+.branding-preview-browser i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #647996;
+}
+.branding-preview-browser span {
+  margin-left: 8px;
+  color: #9eafc8;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+.branding-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #263651;
+}
+.branding-preview-header img {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  object-fit: contain;
+}
+.branding-preview-header div {
+  min-width: 0;
+  flex: 1;
+}
+.branding-preview-header strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eff4ff;
+  font: 800 17px/1 var(--head);
+}
+.branding-preview-header small {
+  display: block;
+  margin-top: 4px;
+  color: #91a4c1;
+  font-size: 6px;
+  letter-spacing: 1px;
+}
+.branding-preview-nav {
+  color: #8da0bd;
+  font-size: 7px;
+  font-weight: 800;
+}
+.branding-preview-content {
+  padding: 32px 18px 28px;
+  background:
+    linear-gradient(90deg, rgba(7, 13, 27, 0.97), rgba(7, 13, 27, 0.62)),
+    url("/images/hero-arena.webp") center/cover;
+}
+.branding-preview-content > span {
+  color: #9cb8ff;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.branding-preview-content > strong {
+  display: block;
+  margin: 12px 0 15px;
+  color: #f2f6ff;
+  font: 800 35px/0.9 var(--head);
+}
+.branding-preview-content em {
+  color: #8aaeff;
+  font-style: normal;
+}
+.branding-preview-content > div {
+  display: inline-flex;
+  background: #3068ff;
+  padding: 9px;
+  font-size: 7px;
+  font-weight: 800;
+}
+.branding-preview .branding-preview-note {
+  margin: 16px 0 0;
+  color: #91a4c1;
+  font-size: 10px;
+}
+@media (max-width: 1000px) {
+  .branding-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 420px) {
+  .branding-logo-control {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .branding-actions .button {
+    width: 100%;
+    justify-content: center;
   }
 }

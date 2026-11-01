@@ -5,6 +5,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { brandingFromDocument } from "./brand.js";
 
 export async function api(url, { method = "GET", body, ...options } = {}) {
   const headers = { ...(options.headers || {}) };
@@ -37,11 +38,13 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [supportEmail, setSupportEmail] = useState("");
+  const [branding, setBranding] = useState(brandingFromDocument);
   const refresh = useCallback(async () => {
     try {
       const data = await api("/me");
       setUser(data.user);
       setSupportEmail(data.supportEmail || "");
+      if (data.branding) setBranding(data.branding);
     } catch {
       setUser(null);
     } finally {
@@ -60,7 +63,16 @@ export function AuthProvider({ children }) {
   };
   return (
     <AuthContext.Provider
-      value={{ user, setUser, loading, logout, supportEmail, refresh }}
+      value={{
+        user,
+        setUser,
+        loading,
+        logout,
+        supportEmail,
+        refresh,
+        branding,
+        setBranding,
+      }}
     >
       {children}
     </AuthContext.Provider>
